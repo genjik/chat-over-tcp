@@ -22,9 +22,14 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
 
 #include "../include/global.h"
 #include "../include/logger.h"
+
+void author_cmd();
+void exit_cmd();
 
 /**
  * main function
@@ -42,6 +47,55 @@ int main(int argc, char **argv)
 	fclose(fopen(LOGFILE, "w"));
 
 	/*Start Here*/
+	if (argc != 3) {
+      printf("Usage:%s [c|s] [port]\n", argv[0]);
+      exit(-1);
+    }
+
+    if (strlen(argv[1]) != 1) {
+      printf("First argument must either be: c or s\n");
+      exit(1);
+    }
+
+    /* If client: */
+    if (argv[1][0] == 'c') {
+      while (true) {
+        printf("\n[PA1-Client@CSE489]$ ");
+        fflush(stdout);
+
+        char* cmd = (char*) malloc(127);
+        if (fgets(cmd, 126, stdin) == NULL) {
+          exit(-1);
+        }
+
+        if (strcmp(cmd, "AUTHOR\n") == 0) {
+          author_cmd();
+        }
+        else if (strcmp(cmd, "EXIT\n") == 0) {
+          exit_cmd();
+        }
+
+        //printf("msg: %s, size: %d\n", cmd, strlen(cmd));
+      }
+    }
+    /* If server: */
+    else if (argv[1][0] == 's') {
+
+    }
+    else {
+      printf("First argument must either be: c or s\n");
+      exit(1);
+    }
 
 	return 0;
+}
+
+void author_cmd() {
+  cse4589_print_and_log("[AUTHOR:SUCCESS]\n");
+  cse4589_print_and_log("I, genjebek, have read and understood the course academic integrity policy.\n");
+  cse4589_print_and_log("[AUTHOR:END]\n");
+}
+
+void exit_cmd() {
+  exit(0);
 }

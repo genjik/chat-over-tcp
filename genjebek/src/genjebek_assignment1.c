@@ -42,7 +42,7 @@ void ip_cmd();
 void port_cmd();
 
 char* my_ip;
-int this_port;
+char* my_port;
 
 /**
  * main function
@@ -71,6 +71,7 @@ int main(int argc, char **argv)
     }
 
     get_ip();
+    my_port = argv[2];
     
     /* Client */
     if (argv[1][0] == 'c') {
@@ -201,6 +202,6 @@ void ip_cmd() {
 
 void port_cmd() {
   cse4589_print_and_log("[PORT:SUCCESS]\n");
-  cse4589_print_and_log("PORT:%d\n", this_port);
+  cse4589_print_and_log("PORT:%d\n", atoi(my_port));
   cse4589_print_and_log("[PORT:END]\n"); 
 }

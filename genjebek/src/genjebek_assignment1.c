@@ -25,11 +25,24 @@
 #include <string.h>
 #include <stdbool.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include "../include/global.h"
 #include "../include/logger.h"
 
+void get_ip();
 void author_cmd();
 void exit_cmd();
+void ip_cmd();
+void port_cmd();
+
+char* my_ip;
+int this_port;
 
 /**
  * main function
@@ -57,7 +70,9 @@ int main(int argc, char **argv)
       exit(1);
     }
 
-    /* If client: */
+    get_ip();
+    
+    /* Client */
     if (argv[1][0] == 'c') {
       while (true) {
         printf("\n[PA1-Client@CSE489]$ ");
@@ -71,14 +86,30 @@ int main(int argc, char **argv)
         if (strcmp(cmd, "AUTHOR\n") == 0) {
           author_cmd();
         }
+        else if (strcmp(cmd, "IP\n") == 0) {
+          ip_cmd();
+        }
+        else if (strcmp(cmd, "PORT\n") == 0) {
+          port_cmd();
+        }
+        else if (strcmp(cmd, "LIST\n") == 0) {
+          
+        }
+        else if (strcmp(cmd, "LOGIN\n") == 0) {
+          
+        }
+        else if (strcmp(cmd, "REFRESH\n") == 0) {
+          
+        }
+        else if (strcmp(cmd, "LOGOUT\n") == 0) {
+          
+        }
         else if (strcmp(cmd, "EXIT\n") == 0) {
           exit_cmd();
         }
-
-        //printf("msg: %s, size: %d\n", cmd, strlen(cmd));
       }
     }
-    /* If server: */
+    /* Server */
     else if (argv[1][0] == 's') {
 
     }
@@ -90,6 +121,46 @@ int main(int argc, char **argv)
 	return 0;
 }
 
+void get_ip() {
+  if (my_ip != NULL)
+    return;
+  
+  struct addrinfo hints;
+  struct addrinfo* res;
+
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_DGRAM;
+
+  if (getaddrinfo("8.8.8.8", "53", &hints, &res) != 0) {
+    printf("Failed to obtain getaddrinfo() in get_ip()\n");
+    exit(1);
+  }
+
+  int sd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+  if (sd == -1) {
+    printf("Failed to create socket() in get_ip()\n");
+    exit(1);
+  }
+
+  if (connect(sd, res->ai_addr, res->ai_addrlen) != 0) {
+    printf("Failed to connect() in get_ip()\n");
+    exit(1);
+  }
+
+  if (getsockname(sd, res->ai_addr, &res->ai_addrlen) != 0) {
+    printf("Failed to getsockname() in get_ip()\n");
+    exit(1);
+  }
+
+  my_ip = (char*) malloc(16);
+  struct sockaddr_in* sock_addr_in = (struct sockaddr_in*) res->ai_addr;
+  if (inet_ntop(res->ai_family, &sock_addr_in->sin_addr, my_ip, 16) == NULL) {
+    printf("Failed to inet_ntop() in get_ip()\n");
+    exit(1);
+  }
+}
+
 void author_cmd() {
   cse4589_print_and_log("[AUTHOR:SUCCESS]\n");
   cse4589_print_and_log("I, genjebek, have read and understood the course academic integrity policy.\n");
@@ -98,4 +169,22 @@ void author_cmd() {
 
 void exit_cmd() {
   exit(0);
+}
+
+void ip_cmd() {
+  if (my_ip != NULL) {
+    cse4589_print_and_log("[IP:SUCCESS]\n");
+    cse4589_print_and_log("IP:%s\n", my_ip);
+    cse4589_print_and_log("[IP:END]\n");
+  }
+  else {
+    cse4589_print_and_log("[IP:ERROR]\n");
+    cse4589_print_and_log("[IP:END]\n");
+  }
+}
+
+void port_cmd() {
+  cse4589_print_and_log("[PORT:SUCCESS]\n");
+  cse4589_print_and_log("PORT:%d\n", this_port);
+  cse4589_print_and_log("[PORT:END]\n"); 
 }

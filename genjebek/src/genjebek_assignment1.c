@@ -111,7 +111,23 @@ int main(int argc, char **argv)
     }
     /* Server */
     else if (argv[1][0] == 's') {
+      while (true) {
+        printf("\n[PA1-Client@CSE489]$ ");
+        fflush(stdout);
 
+        char* cmd = (char*) malloc(127);
+        if (fgets(cmd, 126, stdin) == NULL)
+          exit(-1);
+
+        if (strcmp(cmd, "AUTHOR\n") == 0)
+          author_cmd();
+        else if (strcmp(cmd, "IP\n") == 0)
+          ip_cmd();
+        else if (strcmp(cmd, "PORT\n") == 0)
+          port_cmd();
+        else if (strcmp(cmd, "LIST\n") == 0) {}
+        else if (strcmp(cmd, "STATISTICS\n") == 0) {}
+      }
     }
     else {
       printf("First argument must either be: c or s\n");

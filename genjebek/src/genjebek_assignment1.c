@@ -298,7 +298,7 @@ int main(int argc, char **argv) {
 
                             struct host* new_host = (struct host*) calloc(1, sizeof(struct host));
 
-                            if (inet_ntop(AF_INET, host_addr_in, new_host->ip, 18) == NULL)
+                            if (inet_ntop(AF_INET, &host_addr_in->sin_addr, new_host->ip, 18) == NULL)
                                 perror("error: server inet_ntop()");
                             memcpy(new_host->hostname, hostname, 32);
                             new_host->port = host_addr_in->sin_port;

@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <errno.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -182,7 +183,7 @@ int main(int argc, char **argv) {
                         void* orig_ptr = buf;
 
                         if (recv(server_sd, buf, BUFF_SIZE, 0) <= 0) {
-                            printf("server closed connection\n");
+                            //printf("server closed connection\n");
                             close(server_sd);
                             is_logged_in = false;
                             FD_CLR(server_sd, &master_list);
@@ -306,7 +307,7 @@ int main(int argc, char **argv) {
                             if (inet_ntop(AF_INET, &host_addr_in->sin_addr, new_host->ip, 18) == NULL)
                                 perror("error: server inet_ntop()");
                             memcpy(new_host->hostname, hostname, 32);
-                            new_host->port = host_addr_in->sin_port;
+                            new_host->port = htons(host_addr_in->sin_port);
 
                             list_insert(&client_list, new_host);
 
@@ -462,8 +463,10 @@ int login_cmd(char* args) {
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE; // new
 
-    if (getaddrinfo(ip, port, &hints, &res) != 0) {
+    //if (getaddrinfo(ip, port, &hints, &res) != 0) {
+    if (getaddrinfo(NULL, my_port, &hints, &res) != 0) {
         login_error();
         return -1;
     }
@@ -474,23 +477,23 @@ int login_cmd(char* args) {
         return -1;
     }
 
-    /* binding specified port for client to run on*/
+    if (bind(sd, res->ai_addr, res->ai_addrlen) < 0) {
+        login_error();
+        //printf("code: %s\n", strerror(errno));
+        return -1;
+    }
+    //printf("my PORT: %d\n", htons(((struct sockaddr_in*) res->ai_addr)->sin_port));
+
+    struct addrinfo* res2;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
-    struct addrinfo* res2;
-    if (getaddrinfo(NULL, my_port, &hints, &res2) != 0) {
+    if (getaddrinfo(ip, port, &hints, &res2) != 0) {
         login_error();
         return -1;
     }
-    if (bind(sd, res2->ai_addr, res2->ai_addrlen) < 0) {
-        login_error();
-        return -1;
-    }
-    /* end */
 
-    if (connect(sd, res->ai_addr, res->ai_addrlen) != 0) {
+    if (connect(sd, res2->ai_addr, res2->ai_addrlen) != 0) {
         login_error();
         return -1;
     }

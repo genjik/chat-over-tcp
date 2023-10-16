@@ -40,24 +40,7 @@
 #define CMD_SIZE 100
 #define BUFF_SIZE 256
 
-void author_cmd();
-void exit_cmd();
-void ip_cmd();
-void port_cmd();
-int login_cmd(char*);
-
-/* utility functions */
-void get_ip();
-bool is_valid_port(char* port);
-void login_error();
-
-
-
-char* my_ip;
-char* my_port;
-
-/* used only by client */
-bool is_logged_in = false;
+#define LIST_CMD 1
 
 struct host {
     char hostname[32];
@@ -88,6 +71,25 @@ void list_init(struct host_list* list);
 void list_insert(struct host_list* list, struct host* new_host); 
 void list_remove(struct host_list* list, struct host* host); 
 void list_debug(struct host_list* list);
+void list_free(struct host_list* list); 
+
+/* cmds */
+void author_cmd();
+void exit_cmd();
+void ip_cmd();
+void port_cmd();
+int login_cmd(char*);
+void list_cmd(struct host_list*);
+
+char* my_ip;
+char* my_port;
+/* used only by client */
+bool is_logged_in = false;
+
+/* utility functions */
+void get_ip();
+bool is_valid_port(char* port);
+void login_error();
 
 /**
  * main function
@@ -157,7 +159,8 @@ int main(int argc, char **argv) {
                             ip_cmd();
                         else if (strcmp(cmd, "PORT\n") == 0)
                             port_cmd();
-                        else if (strcmp(cmd, "LIST\n") == 0 && is_logged_in) {}
+                        else if (strcmp(cmd, "LIST\n") == 0 && is_logged_in)
+                            list_cmd(&client_list);
                         else if (strncmp(cmd, "LOGIN ", 6) == 0) {
                             server_sd = login_cmd(cmd+6);
                             FD_SET(server_sd, &master_list);
@@ -173,6 +176,7 @@ int main(int argc, char **argv) {
                     }
                     else if (sd == server_sd) {
                         char* buf = (char*) calloc(BUFF_SIZE, sizeof(char));
+                        void* orig_ptr = buf;
 
                         if (recv(server_sd, buf, BUFF_SIZE, 0) <= 0) {
                             printf("server closed connection\n");
@@ -181,13 +185,25 @@ int main(int argc, char **argv) {
                             FD_CLR(server_sd, &master_list);
                         }
                         else {
-                            int size = *(int*) buf;
+                            int cmd = *(int*) buf;
+                            int size = *(int*) (buf+4);
                             buf += 8;
-                            for (int i = 0; i < size; ++i) {
-                                struct host_serialized* host = (struct host_serialized*) (buf += (i * sizeof(struct host_serialized)));
-                                printf("%d) ip: %s port: %d\n", i, host->ip, host->port);
+                            if (cmd == LIST_CMD) {
+                                list_free(&client_list);
+                                for (int i = 0; i < size; ++i) {
+                                    struct host_serialized* host = (struct host_serialized*) buf; 
+                                    struct host* full_data = (struct host*) calloc(1, sizeof(struct host));
+                                    memcpy(full_data->hostname, host->hostname, 32);
+                                    memcpy(full_data->ip, host->ip, 18);
+                                    full_data->port = host->port;
+                                    list_insert(&client_list, full_data);
+                                    //printf("%d) ip: %s port: %d\n", i, host->ip, host->port);
+                                    buf += sizeof(struct host_serialized);
+                                }
+                                //list_debug(&client_list);
                             }
                         }
+                        free(orig_ptr);
                     }
                 }
             }
@@ -258,7 +274,8 @@ int main(int argc, char **argv) {
                             ip_cmd();
                         else if (strcmp(cmd, "PORT\n") == 0)
                             port_cmd();
-                        else if (strcmp(cmd, "LIST\n") == 0) {}
+                        else if (strcmp(cmd, "LIST\n") == 0)
+                            list_cmd(&client_list);
                         else if (strcmp(cmd, "STATISTICS\n") == 0) {}
 
                         free(cmd);
@@ -275,22 +292,33 @@ int main(int argc, char **argv) {
                         /* @TODO: SEND list of connected users to client */
                         if (host_addr.ss_family == AF_INET) {
                             struct sockaddr_in* host_addr_in = (struct sockaddr_in*) &host_addr;
+
+                            char* hostname = (char*) malloc(32);
+                            getnameinfo((struct sockaddr*) host_addr_in, sizeof(struct sockaddr_in), hostname, 32, NULL, 0, 0); 
+
                             struct host* new_host = (struct host*) calloc(1, sizeof(struct host));
-                            if (inet_ntop(AF_INET, host_addr_in, new_host->ip, 32) == NULL)
+
+                            if (inet_ntop(AF_INET, host_addr_in, new_host->ip, 18) == NULL)
                                 perror("error: server inet_ntop()");
+                            memcpy(new_host->hostname, hostname, 32);
                             new_host->port = host_addr_in->sin_port;
+
                             list_insert(&client_list, new_host);
 
-                            struct host_serialized* buf = (struct host_serialized*) calloc(BUFF_SIZE, sizeof(char));
-                            *(int*) buf = client_list.size;
+                            void* buf = calloc(BUFF_SIZE, sizeof(char));
+                            *(int*) buf = LIST_CMD;
+                            *(int*) (buf+4) = client_list.size;
                             int i = 8;
-                            for (struct host* cur = client_list.head; cur != client_list.tail; cur = cur->next) {
+                            for (struct host* cur = client_list.head->next; cur != client_list.tail; cur = cur->next) {
                                memcpy(buf+i, cur, sizeof(struct host_serialized)); 
                                i += sizeof(struct host_serialized);
                             }
-                            if (send(con_sd, buf, BUFF_SIZE, 0) == -1)
+                            int bytes_send;
+                            if ((bytes_send = send(con_sd, buf, BUFF_SIZE, 0)) == -1)
                                 perror("error: server send()");
-                            list_debug(&client_list);
+                            //printf("bytes send: %d\n", bytes_send);
+                            //list_debug(&client_list);
+                            free(buf);
                         }
                     }
                     else {
@@ -452,6 +480,18 @@ int login_cmd(char* args) {
     return sd;
 }
 
+void list_cmd(struct host_list* list) {
+    cse4589_print_and_log("[LIST:SUCCESS]\n");
+    struct host* cur = list->head->next;
+    int i = 1;
+    while (cur != list->tail) {
+       cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", i, cur->hostname, cur->ip, cur->port);
+       ++i;
+       cur = cur->next;
+    }
+    cse4589_print_and_log("[LIST:END]\n");
+}
+
 void login_error() {
     cse4589_print_and_log("[LOGIN:ERROR]\n");
     cse4589_print_and_log("[LOGIN:END]\n");
@@ -508,4 +548,16 @@ void list_debug(struct host_list* list) {
         printf("%d) hostname: %s ip: %s port: %d\n", i++, cur->hostname, cur->ip, cur->port);
         cur = cur->next;
     }
+}
+
+void list_free(struct host_list* list) {
+    struct host* cur = list->head->next;
+    while (cur != list->tail) {
+        struct host* next = cur->next;
+        free(cur);
+        cur = next;
+    }
+    list->head->next = list->tail;
+    list->tail->prev = list->head;
+    list->size = 0;
 }

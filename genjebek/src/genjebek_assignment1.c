@@ -38,7 +38,7 @@
 
 #define STDIN 0
 #define CMD_SIZE 100
-#define BUFF_SIZE 256
+#define BUFF_SIZE 1024
 
 #define LIST_CMD 1
 
@@ -85,6 +85,7 @@ char* my_ip;
 char* my_port;
 /* used only by client */
 bool is_logged_in = false;
+bool is_client;
 
 /* utility functions */
 void get_ip();
@@ -121,6 +122,8 @@ int main(int argc, char **argv) {
     
     /* Client */
     if (argv[1][0] == 'c') {
+        is_client = true;
+
         struct host_list client_list;
         list_init(&client_list);
 
@@ -159,7 +162,7 @@ int main(int argc, char **argv) {
                             ip_cmd();
                         else if (strcmp(cmd, "PORT\n") == 0)
                             port_cmd();
-                        else if (strcmp(cmd, "LIST\n") == 0 && is_logged_in)
+                        else if (strcmp(cmd, "LIST\n") == 0)
                             list_cmd(&client_list);
                         else if (strncmp(cmd, "LOGIN ", 6) == 0) {
                             server_sd = login_cmd(cmd+6);
@@ -211,6 +214,8 @@ int main(int argc, char **argv) {
     }
     /* Server */
     else if (argv[1][0] == 's') {
+        is_client = false;
+
         struct host_list client_list;
         list_init(&client_list);
 
@@ -469,6 +474,22 @@ int login_cmd(char* args) {
         return -1;
     }
 
+    /* binding specified port for client to run on*/
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+    struct addrinfo* res2;
+    if (getaddrinfo(NULL, my_port, &hints, &res2) != 0) {
+        login_error();
+        return -1;
+    }
+    if (bind(sd, res2->ai_addr, res2->ai_addrlen) < 0) {
+        login_error();
+        return -1;
+    }
+    /* end */
+
     if (connect(sd, res->ai_addr, res->ai_addrlen) != 0) {
         login_error();
         return -1;
@@ -481,6 +502,11 @@ int login_cmd(char* args) {
 }
 
 void list_cmd(struct host_list* list) {
+    if (is_client == true && is_logged_in == false) {
+        cse4589_print_and_log("[LIST:ERROR]\n");
+        cse4589_print_and_log("[LIST:END]\n");
+        return;
+    }
     cse4589_print_and_log("[LIST:SUCCESS]\n");
     struct host* cur = list->head->next;
     int i = 1;

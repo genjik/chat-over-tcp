@@ -412,7 +412,7 @@ void exit_cmd(int sd, struct host_list* list) {
             }
             cur = cur->next;
         }
-        printf("%s\n", cur->hostname);
+        //printf("%s\n", cur->hostname);
 
         int size = 8 + sizeof(struct host_serialized);
         void* buf = calloc(size, sizeof(char));

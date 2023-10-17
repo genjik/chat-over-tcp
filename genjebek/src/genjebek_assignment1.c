@@ -41,7 +41,14 @@
 #define CMD_SIZE 100
 #define BUFF_SIZE 1024
 
-#define LIST_CMD 1
+#define LIST_RESP 1
+
+#define REFRESH_CMD 2
+#define SEND_CMD 3
+#define BROADCAST_CMD 4
+#define BLOCK_CMD 5
+#define UNBLOCK_CMD 6
+#define EXIT_CMD 7
 
 struct host {
     char hostname[32];
@@ -71,16 +78,18 @@ struct host_list {
 void list_init(struct host_list* list);
 void list_insert(struct host_list* list, struct host* new_host); 
 void list_remove(struct host_list* list, struct host* host); 
+void list_remove_by_search(struct host_list*, struct host_serialized*);
 void list_debug(struct host_list* list);
 void list_free(struct host_list* list); 
 
 /* cmds */
 void author_cmd();
-void exit_cmd();
+void exit_cmd(int, struct host_list*);
 void ip_cmd();
 void port_cmd();
 int login_cmd(char*);
 void list_cmd(struct host_list*);
+void refresh_cmd(struct host_list*, int sd);
 
 char* my_ip;
 char* my_port;
@@ -92,6 +101,8 @@ bool is_client;
 void get_ip();
 bool is_valid_port(char* port);
 void login_error();
+void refresh_error();
+void server_send_list(struct host_list* client_list, int con_sd); 
 
 /**
  * main function
@@ -171,10 +182,11 @@ int main(int argc, char **argv) {
                             if (server_sd > highest_socket_num)
                                 highest_socket_num = server_sd;
                         }
-                        else if (strcmp(cmd, "REFRESH\n") == 0 && is_logged_in) {}
+                        else if (strcmp(cmd, "REFRESH\n") == 0)
+                            refresh_cmd(&client_list, server_sd);
                         else if (strcmp(cmd, "LOGOUT\n") == 0 && is_logged_in) {}
                         else if (strcmp(cmd, "EXIT\n") == 0)
-                            exit_cmd();
+                            exit_cmd(server_sd, &client_list);
 
                         free(cmd);
                     }
@@ -192,7 +204,8 @@ int main(int argc, char **argv) {
                             int cmd = *(int*) buf;
                             int size = *(int*) (buf+4);
                             buf += 8;
-                            if (cmd == LIST_CMD) {
+
+                            if (cmd == LIST_RESP) {
                                 list_free(&client_list);
                                 for (int i = 0; i < size; ++i) {
                                     struct host_serialized* host = (struct host_serialized*) buf; 
@@ -310,21 +323,7 @@ int main(int argc, char **argv) {
                             new_host->port = htons(host_addr_in->sin_port);
 
                             list_insert(&client_list, new_host);
-
-                            void* buf = calloc(BUFF_SIZE, sizeof(char));
-                            *(int*) buf = LIST_CMD;
-                            *(int*) (buf+4) = client_list.size;
-                            int i = 8;
-                            for (struct host* cur = client_list.head->next; cur != client_list.tail; cur = cur->next) {
-                               memcpy(buf+i, cur, sizeof(struct host_serialized)); 
-                               i += sizeof(struct host_serialized);
-                            }
-                            int bytes_send;
-                            if ((bytes_send = send(con_sd, buf, BUFF_SIZE, 0)) == -1)
-                                perror("error: server send()");
-                            //printf("bytes send: %d\n", bytes_send);
-                            //list_debug(&client_list);
-                            free(buf);
+                            server_send_list(&client_list, con_sd); 
                         }
                     }
                     else {
@@ -335,7 +334,14 @@ int main(int argc, char **argv) {
                             FD_CLR(sd, &master_list);
                         }
                         else {
-                            /* @TODO: process client reqeust */
+                            int cmd = *(int*) buf;
+                            if (cmd == REFRESH_CMD)
+                                server_send_list(&client_list, sd); 
+                            if (cmd == EXIT_CMD) {
+                                struct host_serialized* host = (struct host_serialized*) (buf + 8);
+                                list_remove_by_search(&client_list, host);
+                                //printf("on exit cmd i received -> hostname: %s ip: %s port: %d\n", host->hostname, host->ip, host->port);
+                            }
                         }
                     }
                 }
@@ -396,7 +402,30 @@ void author_cmd() {
     cse4589_print_and_log("[AUTHOR:END]\n");
 }
 
-void exit_cmd() {
+void exit_cmd(int sd, struct host_list* list) {
+    if (is_logged_in == true) {
+        struct host* cur = list->head->next;
+        while (cur != list->tail) {
+            //printf("cmp %s and %s | %d and %d\n", my_ip, cur->ip, atoi(my_port), cur->port);
+            if (strcmp(my_ip, cur->ip) == 0 && atoi(my_port) == cur->port) {
+                break;
+            }
+            cur = cur->next;
+        }
+        printf("%s\n", cur->hostname);
+
+        int size = 8 + sizeof(struct host_serialized);
+        void* buf = calloc(size, sizeof(char));
+
+        *(int*) buf = EXIT_CMD;
+        memcpy(buf + 8, cur, sizeof(struct host_serialized)); 
+
+        if (send(sd, buf, size, 0) == -1) {
+            refresh_error();
+            return;
+        }
+    }
+
     exit(0);
 }
 
@@ -521,6 +550,30 @@ void list_cmd(struct host_list* list) {
     cse4589_print_and_log("[LIST:END]\n");
 }
 
+void refresh_cmd(struct host_list* list, int sd) {
+    if (is_logged_in == false) {
+        refresh_error();
+        return;
+    }
+
+    int size = 4;
+    void* buf = malloc(size);
+    *(int*) buf = REFRESH_CMD;
+
+    if (send(sd, buf, size, 0) == -1) {
+        refresh_error();
+        return;
+    }
+
+    cse4589_print_and_log("[REFRESH:SUCCESS]\n");
+    cse4589_print_and_log("[REFRESH:END]\n");
+}
+
+void refresh_error() {
+    cse4589_print_and_log("[REFRESH:ERROR]\n");
+    cse4589_print_and_log("[REFRESH:END]\n");
+}
+
 void login_error() {
     cse4589_print_and_log("[LOGIN:ERROR]\n");
     cse4589_print_and_log("[LOGIN:END]\n");
@@ -569,6 +622,22 @@ void list_remove(struct host_list* list, struct host* host) {
     --list->size;
 }
 
+void list_remove_by_search(struct host_list* list, struct host_serialized* host) {
+    struct host* cur = list->head->next;
+    while (cur != list->tail) {
+        if (strcmp(cur->hostname, host->hostname) == 0 && strcmp(cur->ip, host->ip) == 0 && cur->port == host->port)
+            break;
+        cur = cur->next;
+    }
+
+    struct host* prev = cur->prev;
+    struct host* next = cur->next;
+    prev->next = next;
+    next->prev = prev;
+    free(cur);
+    --list->size;
+}
+
 void list_debug(struct host_list* list) {
     struct host* cur = list->head->next;
     int i = 0;
@@ -589,4 +658,21 @@ void list_free(struct host_list* list) {
     list->head->next = list->tail;
     list->tail->prev = list->head;
     list->size = 0;
+}
+
+void server_send_list(struct host_list* client_list, int con_sd) {
+    void* buf = calloc(BUFF_SIZE, sizeof(char));
+    *(int*) buf = LIST_RESP;
+    *(int*) (buf+4) = client_list->size;
+    int i = 8;
+    for (struct host* cur = client_list->head->next; cur != client_list->tail; cur = cur->next) {
+       memcpy(buf+i, cur, sizeof(struct host_serialized)); 
+       i += sizeof(struct host_serialized);
+    }
+    int bytes_send;
+    if ((bytes_send = send(con_sd, buf, BUFF_SIZE, 0)) == -1)
+        perror("error: server send()");
+    //printf("bytes send: %d\n", bytes_send);
+    //list_debug(&client_list);
+    free(buf);
 }

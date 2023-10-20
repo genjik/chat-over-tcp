@@ -16,6 +16,7 @@
 #define TYPE_BLOCK     103
 #define TYPE_UNBLOCK   104
 #define TYPE_EXIT      105
+#define TYPE_LOGIN     106
 
 char* get_my_ip();
 void set_my_ip(char* new_ip);

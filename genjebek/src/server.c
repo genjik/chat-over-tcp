@@ -17,7 +17,8 @@
 #include "../include/logger.h"
 
 /* server responses */
-static void login_response(struct user* user);
+static void login_response(int user_sd);
+static void buffered_msg_response(struct user* user);
 static void refresh_response(struct user_list* user_list, int user_sd); 
 static void send_response(void* in_buf, struct user_list* user_list, int user_sd); 
 static void broadcast_response(void* in_buf, struct user_list* user_list, int user_sd); 
@@ -143,7 +144,7 @@ void server_start(char* server_ip) {
                         if (old_user != NULL) {
                             old_user->is_logged_in = true;
                             old_user->sd = client_sd;
-                            login_response(old_user);
+                            buffered_msg_response(old_user);
                         }
                         else {
                             struct user* new_user = create_user((struct sockaddr_in*) &client_addr, client_sd);
@@ -151,6 +152,7 @@ void server_start(char* server_ip) {
                         }
 
                         refresh_response(&user_list, client_sd); 
+                        login_response(client_sd);
                     }
                 }
                 else {
@@ -203,7 +205,19 @@ static void refresh_response(struct user_list* user_list, int user_sd) {
     free(buf);
 }
 
-static void login_response(struct user* user) {
+static void login_response(int user_sd) {
+    void* out_buf = malloc(5);
+    *(int*) out_buf = TYPE_LOGIN;
+    *(char*) (out_buf+4) = 0; // success
+
+    int bytes_send;
+    if ((bytes_send = send(user_sd, out_buf, 5, 0)) == -1)
+        perror("error: server login_response()");
+
+    free(out_buf);
+}
+
+static void buffered_msg_response(struct user* user) {
     if (user->msg_buffer.size <= 0)
         return;
 

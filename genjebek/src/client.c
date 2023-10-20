@@ -144,6 +144,17 @@ void client_start() {
                                 offset += 8 + ip_size + msg_size;
                             }
                         }
+                        else if (type == TYPE_LOGIN) {
+                            int success = *(char*) (buf + 4);
+                            if (success == 0) {
+                                cse4589_print_and_log("[LOGIN:SUCCESS]\n");
+                                cse4589_print_and_log("[LOGIN:END]\n");
+                            }
+                            else {
+                                cse4589_print_and_log("[LOGIN:ERROR]\n");
+                                cse4589_print_and_log("[LOGIN:END]\n");
+                            }
+                        }
                         else if (type == TYPE_BLOCK) {
                             int success = *(char*) (buf + 4);
                             if (success == 0) {
@@ -234,8 +245,8 @@ int login_cmd(char* args) {
     }
 
     is_logged_in = true;
-    cse4589_print_and_log("[LOGIN:SUCCESS]\n");
-    cse4589_print_and_log("[LOGIN:END]\n");
+    //cse4589_print_and_log("[LOGIN:SUCCESS]\n");
+    //cse4589_print_and_log("[LOGIN:END]\n");
     return sd;
 }
 
@@ -346,7 +357,7 @@ void broadcast_cmd(char* args, int sd) {
 
 void block_cmd(char* args, struct user_list* list, int sd) {
     if (is_logged_in == false) {
-        send_error();
+        block_error();
         return;
     }
 
@@ -389,7 +400,7 @@ void block_cmd(char* args, struct user_list* list, int sd) {
 
 void unblock_cmd(char* args, struct user_list* list, int sd) {
     if (is_logged_in == false) {
-        send_error();
+        unblock_error();
         return;
     }
 

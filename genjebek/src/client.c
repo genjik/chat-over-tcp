@@ -86,7 +86,11 @@ void client_start() {
                     else if (strncmp(cmd, "BLOCK ", 6) == 0) block_cmd(cmd+6, &user_list, server_sd);
                     else if (strncmp(cmd, "UNBLOCK ", 8) == 0) unblock_cmd(cmd+8, &user_list, server_sd);
                     else if (strcmp(cmd, "REFRESH\n") == 0) refresh_cmd(server_sd);
-                    else if (strcmp(cmd, "LOGOUT\n") == 0) {}
+                    else if (strcmp(cmd, "LOGOUT\n") == 0) {
+                        close(server_sd);
+                        FD_CLR(server_sd, &master_list);
+                        is_logged_in = false;
+                    }
                     else if (strcmp(cmd, "EXIT\n") == 0) exit_cmd(&user_list, server_sd);
 
                     free(cmd);
@@ -165,6 +169,9 @@ int login_cmd(char* args) {
         login_error();
         return -1;
     }
+
+    int yes = 1;
+    setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 
     if (bind(sd, res->ai_addr, res->ai_addrlen) < 0) {
         login_error();
@@ -335,8 +342,8 @@ void block_cmd(char* args, struct user_list* list, int sd) {
         return;
     }
 
-    cse4589_print_and_log("[BLOCK:SUCCESS]\n");
-    cse4589_print_and_log("[BLOCK:END]\n");
+    //cse4589_print_and_log("[BLOCK:SUCCESS]\n");
+    //cse4589_print_and_log("[BLOCK:END]\n");
 }
 
 void unblock_cmd(char* args, struct user_list* list, int sd) {
@@ -376,8 +383,8 @@ void unblock_cmd(char* args, struct user_list* list, int sd) {
         return;
     }
 
-    cse4589_print_and_log("[UNBLOCK:SUCCESS]\n");
-    cse4589_print_and_log("[UNBLOCK:END]\n");
+    //cse4589_print_and_log("[UNBLOCK:SUCCESS]\n");
+    //cse4589_print_and_log("[UNBLOCK:END]\n");
 }
 
 void exit_cmd(struct user_list* list, int sd) {

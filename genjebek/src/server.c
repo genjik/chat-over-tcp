@@ -16,8 +16,18 @@
 
 #include "../include/logger.h"
 
+/* server responses */
 static void refresh_response(struct user_list* user_list, int con_sd); 
-static struct user* create_user(struct sockaddr_in* client_addr_in);
+
+/* cmds */
+static void stats_cmd(struct user_list* user_list);
+
+/* utilities */
+static struct user* create_user(struct sockaddr_in* client_addr_in, int client_sd);
+char* get_status(bool is_logged_in);
+
+static char logged_in[] = {"logged-in"};
+static char logged_out[] = {"logged-out"};
 
 void server_start(char* server_ip) {
     struct user_list user_list;
@@ -86,7 +96,7 @@ void server_start(char* server_ip) {
                     else if (strcmp(cmd, "IP\n") == 0) ip_cmd();
                     else if (strcmp(cmd, "PORT\n") == 0) port_cmd();
                     else if (strcmp(cmd, "LIST\n") == 0) list_cmd(&user_list, false, false);
-                    else if (strcmp(cmd, "STATISTICS\n") == 0) {}
+                    else if (strcmp(cmd, "STATISTICS\n") == 0) stats_cmd(&user_list);
                     else if (strncmp(cmd, "BLOCKED ", 8) == 0) {}
 
                     free(cmd);
@@ -102,8 +112,25 @@ void server_start(char* server_ip) {
 
                     /* SEND list of connected users to user */
                     if (client_addr.ss_family == AF_INET) {
-                        struct user* new_user = create_user((struct sockaddr_in*) &client_addr);
-                        user_list_insert(&user_list, new_user);
+                        struct sockaddr_in* user_addr_in = (struct sockaddr_in*) &client_addr;
+
+                        /* Extract ip and port from new socket connection */
+                        char ip[18];
+                        int port = htons(user_addr_in->sin_port);
+                        if (inet_ntop(AF_INET, &user_addr_in->sin_addr, ip, 18) == NULL) {
+                            printf("ERROR inet_ntop() in sd == listening_socket \n");
+                        };
+                        
+                        /* Find if user (ip + port) has previously connected and logged out */
+                        struct user* old_user = user_list_find_by_ip_and_port(&user_list, ip, port);
+                        if (old_user != NULL) {
+                            old_user->is_logged_in = true;
+                            old_user->sd = client_sd;
+                        }
+                        else {
+                            struct user* new_user = create_user((struct sockaddr_in*) &client_addr, client_sd);
+                            user_list_insert(&user_list, new_user);
+                        }
 
                         refresh_response(&user_list, client_sd); 
                     }
@@ -112,6 +139,12 @@ void server_start(char* server_ip) {
                     char* buf = (char*) calloc(BUFF_SIZE, sizeof(char));
 
                     if (recv(sd, buf, BUFF_SIZE, 0) <= 0) {
+                        /* Find user by its socket and mark user as "logged_out" */
+                        struct user* user = user_list_find_by_sd(&user_list, sd);
+                        if (user == NULL)
+                            perror("error happened");
+                        user->is_logged_in = false;
+
                         close(sd);
                         FD_CLR(sd, &master_list);
                         continue;
@@ -155,7 +188,7 @@ static void refresh_response(struct user_list* user_list, int con_sd) {
 
 
 /* misc functions */
-static struct user* create_user(struct sockaddr_in* user_addr_in) {
+static struct user* create_user(struct sockaddr_in* user_addr_in, int client_sd) {
     /* Allocate space for new client */
     struct user* new_user = (struct user*) calloc(1, sizeof(struct user));
 
@@ -168,6 +201,26 @@ static struct user* create_user(struct sockaddr_in* user_addr_in) {
     if (inet_ntop(AF_INET, &user_addr_in->sin_addr, new_user->ip, 18) == NULL)
         perror("error: server inet_ntop()");
     new_user->port = htons(user_addr_in->sin_port);
+    new_user->sd = client_sd;
+    new_user->is_logged_in = true;
+    new_user->num_msg_sent = 0;
+    new_user->num_msg_rcv = 0;
 
     return new_user;
+}
+
+static void stats_cmd(struct user_list* user_list) {
+    struct user* cur = user_list->head->next;
+    int list_id = 1;
+    while (cur != user_list->tail) {
+        printf("%-5d%-35s%-8d%-8d%-8s\n", list_id, cur->hostname, cur->num_msg_sent, cur->num_msg_rcv, get_status(cur->is_logged_in));
+        cur = cur->next;
+        ++list_id;
+    }
+}
+
+char* get_status(bool is_logged_in) {
+    if (is_logged_in)
+        return logged_in;
+    return logged_out;
 }

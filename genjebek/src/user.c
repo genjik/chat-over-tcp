@@ -78,6 +78,28 @@ struct user* user_list_find_by_ip(struct user_list* list, char* ip) {
     return NULL;
 }
 
+struct user* user_list_find_by_ip_and_port(struct user_list* list, char* ip, int port) {
+    struct user* cur = list->head->next;
+    while (cur != list->tail) {
+        if (strcmp(ip, cur->ip) == 0 && cur->port == port) { 
+            return cur;
+        }
+        cur = cur->next;
+    }
+    return NULL;
+}
+
+struct user* user_list_find_by_sd(struct user_list* list, int sd) {
+    struct user* cur = list->head->next;
+    while (cur != list->tail) {
+        if (cur->sd == sd)
+            return cur;
+
+        cur = cur->next;
+    }
+    return NULL;
+}
+
 void user_list_debug(struct user_list* list) {
     struct user* cur = list->head->next;
     int i = 0;

@@ -88,6 +88,8 @@ void client_start() {
                         close(server_sd);
                         FD_CLR(server_sd, &master_list);
                         is_logged_in = false;
+                        cse4589_print_and_log("[LOGOUT:SUCCESS]\n");
+                        cse4589_print_and_log("[LOGOUT:END]\n");
                     }
                     else if (strcmp(cmd, "EXIT\n") == 0) exit_cmd(&user_list, server_sd);
 
@@ -145,7 +147,7 @@ void client_start() {
                             }
                         }
                         else if (type == TYPE_LOGIN) {
-                            int success = *(char*) (buf + 4);
+                            char success = *(char*) (buf + 4);
                             if (success == 0) {
                                 cse4589_print_and_log("[LOGIN:SUCCESS]\n");
                                 cse4589_print_and_log("[LOGIN:END]\n");
@@ -156,7 +158,7 @@ void client_start() {
                             }
                         }
                         else if (type == TYPE_BLOCK) {
-                            int success = *(char*) (buf + 4);
+                            char success = *(char*) (buf + 4);
                             if (success == 0) {
                                 cse4589_print_and_log("[BLOCK:SUCCESS]\n");
                                 cse4589_print_and_log("[BLOCK:END]\n");
@@ -167,7 +169,7 @@ void client_start() {
                             }
                         }
                         else if (type == TYPE_UNBLOCK) {
-                            int success = *(char*) (buf + 4);
+                            char success = *(char*) (buf + 4);
                             if (success == 0) {
                                 cse4589_print_and_log("[UNBLOCK:SUCCESS]\n");
                                 cse4589_print_and_log("[UNBLOCK:END]\n");
@@ -452,6 +454,9 @@ void exit_cmd(struct user_list* list, int sd) {
             return;
         }
     }
+
+    cse4589_print_and_log("[EXIT:SUCCESS]\n");
+    cse4589_print_and_log("[EXIT:END]\n");
 
     exit(0);
 }

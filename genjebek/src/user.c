@@ -123,3 +123,72 @@ void user_list_free(struct user_list* list) {
     list->tail->prev = list->head;
     list->size = 0;
 }
+
+
+
+/* functions for blocked users */
+void user_blocked_list_init(struct user_blocked_list* list) {
+    struct user_blocked* head = (struct user_blocked*) calloc(1, sizeof(struct user));
+    struct user_blocked* tail = (struct user_blocked*) calloc(1, sizeof(struct user));
+
+    head->next = tail;
+    tail->prev = head;
+
+    list->head = head;
+    list->tail = tail;
+    list->size = 0;
+}
+void user_blocked_list_insert(struct user_blocked_list* list, struct user_blocked* user_blocked) {
+    struct user_blocked* cur = list->head->next;
+    while (cur != list->tail) {
+        if (cur->user->port > user_blocked->user->port)
+            break;
+        cur = cur->next;
+    }
+    user_blocked->next = cur;
+    user_blocked->prev = cur->prev;
+    cur->prev->next = user_blocked;
+    cur->prev = user_blocked;
+
+    ++list->size;
+}
+void user_blocked_list_remove(struct user_blocked_list* list, struct user_blocked* user_blocked) {
+    user_blocked->prev->next = user_blocked->next;
+    user_blocked->next->prev = user_blocked->prev;
+    free(user_blocked);
+    --list->size;
+}
+
+struct user_blocked* user_blocked_list_find_by_ip(struct user_blocked_list* list, char* ip) {
+    struct user_blocked* cur = list->head->next;
+    while (cur != list->tail) {
+        if (strcmp(ip, cur->user->ip) == 0) { 
+            return cur;
+        }
+        cur = cur->next;
+    }
+    return NULL;
+}
+
+void user_blocked_list_debug(struct user_blocked_list* list) {
+    struct user_blocked* cur = list->head->next;
+    int i = 0;
+
+    printf("\nuser_list_debug()\nsize:%d\n", list->size);
+
+    while (cur != list->tail) {
+        printf("%d) hostname: %s ip: %s port: %d\n", i++, cur->user->hostname, cur->user->ip, cur->user->port);
+        cur = cur->next;
+    }
+}
+void user_blocked_list_free(struct user_blocked_list* list) {
+    struct user_blocked* cur = list->head->next;
+    while (cur != list->tail) {
+        struct user_blocked* next = cur->next;
+        free(cur);
+        cur = next;
+    }
+    list->head->next = list->tail;
+    list->tail->prev = list->head;
+    list->size = 0;
+}

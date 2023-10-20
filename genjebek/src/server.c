@@ -18,13 +18,22 @@
 
 /* server responses */
 static void refresh_response(struct user_list* user_list, int con_sd); 
+static void block_response(void* in_buf, struct user_list* list, int user_sd);
+static void unblock_response(void* buf, struct user_list* list, int user_sd);
 
 /* cmds */
 static void stats_cmd(struct user_list* user_list);
+static void blocked_cmd(char* cmd, struct user_list* user_list);
+
+/* error functions */
+static void blocked_error();
 
 /* utilities */
 static struct user* create_user(struct sockaddr_in* client_addr_in, int client_sd);
-char* get_status(bool is_logged_in);
+static char* get_status(bool is_logged_in);
+
+static void block_unblock_success(int type, int user_sd);
+static void block_unblock_failure(int type, int user_sd);
 
 static char logged_in[] = {"logged-in"};
 static char logged_out[] = {"logged-out"};
@@ -97,7 +106,7 @@ void server_start(char* server_ip) {
                     else if (strcmp(cmd, "PORT\n") == 0) port_cmd();
                     else if (strcmp(cmd, "LIST\n") == 0) list_cmd(&user_list, false, false);
                     else if (strcmp(cmd, "STATISTICS\n") == 0) stats_cmd(&user_list);
-                    else if (strncmp(cmd, "BLOCKED ", 8) == 0) {}
+                    else if (strncmp(cmd, "BLOCKED ", 8) == 0) blocked_cmd(cmd+8, &user_list);
 
                     free(cmd);
                 }
@@ -155,8 +164,8 @@ void server_start(char* server_ip) {
                     if (type == TYPE_REFRESH) refresh_response(&user_list, sd); 
                     else if (type == TYPE_SEND) {}
                     else if (type == TYPE_BROADCAST) {}
-                    else if (type == TYPE_BLOCK) {}
-                    else if (type == TYPE_UNBLOCK) {}
+                    else if (type == TYPE_BLOCK) block_response(buf+4, &user_list, sd);
+                    else if (type == TYPE_UNBLOCK) unblock_response(buf+4, &user_list, sd);
                     else if (type == TYPE_EXIT) user_list_remove_by_search(&user_list, (struct user_stripped*) (buf + 8));
 
                     free(buf);
@@ -186,6 +195,107 @@ static void refresh_response(struct user_list* user_list, int con_sd) {
     free(buf);
 }
 
+static void block_response(void* in_buf, struct user_list* user_list, int user_sd) {
+    /* Retrieve info about user who sent BLOCK */
+    struct sockaddr_in user_addr_in;
+    socklen_t user_addr_len = sizeof(struct sockaddr_in);
+
+    if (getpeername(user_sd, (struct sockaddr*) &user_addr_in, &user_addr_len) == -1)
+        perror("error: getpeername() in block_response");
+    
+    char this_user_ip[18];
+    if (inet_ntop(AF_INET, &user_addr_in.sin_addr, this_user_ip, 18) == NULL)
+        perror("error: inet_ntop() in block_response");
+
+    struct user* this_user = user_list_find_by_ip(user_list, this_user_ip);
+    //printf("hostname: %s, ip: %s, port: %d\n", this_user->hostname, this_user->ip, this_user->port);
+
+    /* Search for <client-ip> to be blocked */
+    int ip_to_block_size = *(int*) in_buf;
+    char ip_to_block[18];
+    memcpy(ip_to_block, in_buf + 4, ip_to_block_size);
+    ip_to_block[ip_to_block_size] = '\0';
+    //printf("size: %d, ip to be blocked: %s\n", ip_to_block_size, ip_to_block);
+
+    struct user* user_to_block = user_list_find_by_ip(user_list, ip_to_block);
+    /* User to be blocked has EXITed the server. No further
+       action is needed */
+    if (user_to_block == NULL) {
+        block_unblock_success(TYPE_BLOCK, user_sd);
+        return;
+    }
+
+    struct user_blocked* found = user_blocked_list_find_by_ip(&this_user->blocked_list, ip_to_block);
+    /* User to be blocked is already blocked -> error */
+    if (found != NULL) {
+        block_unblock_failure(TYPE_BLOCK, user_sd);
+        return;
+    }
+
+    struct user_blocked* new_user_to_be_blocked = (struct user_blocked*) malloc(sizeof(struct user_blocked));
+    new_user_to_be_blocked->user = user_to_block;
+
+    user_blocked_list_insert(&this_user->blocked_list, new_user_to_be_blocked);
+    
+    block_unblock_success(TYPE_BLOCK, user_sd);
+}
+
+static void unblock_response(void* in_buf, struct user_list* user_list, int user_sd) {
+    /* Retrieve info about user who sent BLOCK */
+    struct sockaddr_in user_addr_in;
+    socklen_t user_addr_len = sizeof(struct sockaddr_in);
+
+    if (getpeername(user_sd, (struct sockaddr*) &user_addr_in, &user_addr_len) == -1)
+        perror("error: getpeername() in block_response");
+    
+    char this_user_ip[18];
+    if (inet_ntop(AF_INET, &user_addr_in.sin_addr, this_user_ip, 18) == NULL)
+        perror("error: inet_ntop() in block_response");
+
+    struct user* this_user = user_list_find_by_ip(user_list, this_user_ip);
+    //printf("hostname: %s, ip: %s, port: %d\n", this_user->hostname, this_user->ip, this_user->port);
+
+    /* Search for <client-ip> to be blocked */
+    int ip_to_unblock_size = *(int*) in_buf;
+    char ip_to_unblock[18];
+    memcpy(ip_to_unblock, in_buf + 4, ip_to_unblock_size);
+    ip_to_unblock[ip_to_unblock_size] = '\0';
+    //printf("size: %d, ip to be blocked: %s\n", ip_to_block_size, ip_to_block);
+
+    struct user_blocked* found = user_blocked_list_find_by_ip(&this_user->blocked_list, ip_to_unblock);
+    /* User to be blocked is already blocked -> error */
+    if (found == NULL) {
+        block_unblock_failure(TYPE_UNBLOCK, user_sd);
+        return;
+    }
+
+    user_blocked_list_remove(&this_user->blocked_list, found);
+    
+    block_unblock_success(TYPE_UNBLOCK, user_sd);
+}
+
+static void block_unblock_success(int type, int user_sd) {
+    void* out_buf = malloc(5);
+    *(int*) out_buf = type;
+    *(char*) (out_buf+4) = 0; //success
+
+    int bytes_send;
+    if ((bytes_send = send(user_sd, out_buf, 5, 0)) == -1)
+        perror("error: server block/unblock()");
+    free(out_buf);
+}
+
+static void block_unblock_failure(int type, int user_sd) {
+    void* out_buf = malloc(5);
+    *(int*) out_buf = type;
+    *(char*) (out_buf+4) = 1; //success
+
+    int bytes_send;
+    if ((bytes_send = send(user_sd, out_buf, 5, 0)) == -1)
+        perror("error: server block/unblock()");
+    free(out_buf);
+}
+
 
 /* misc functions */
 static struct user* create_user(struct sockaddr_in* user_addr_in, int client_sd) {
@@ -205,6 +315,7 @@ static struct user* create_user(struct sockaddr_in* user_addr_in, int client_sd)
     new_user->is_logged_in = true;
     new_user->num_msg_sent = 0;
     new_user->num_msg_rcv = 0;
+    user_blocked_list_init(&new_user->blocked_list);
 
     return new_user;
 }
@@ -213,13 +324,43 @@ static void stats_cmd(struct user_list* user_list) {
     struct user* cur = user_list->head->next;
     int list_id = 1;
     while (cur != user_list->tail) {
-        printf("%-5d%-35s%-8d%-8d%-8s\n", list_id, cur->hostname, cur->num_msg_sent, cur->num_msg_rcv, get_status(cur->is_logged_in));
+        cse4589_print_and_log("%-5d%-35s%-8d%-8d%-8s\n", list_id, cur->hostname, cur->num_msg_sent, cur->num_msg_rcv, get_status(cur->is_logged_in));
         cur = cur->next;
         ++list_id;
     }
 }
 
-char* get_status(bool is_logged_in) {
+static void blocked_cmd(char* cmd, struct user_list* user_list) {
+    char ip[17];
+
+    if (validate_ip(cmd, ip) < 0) {
+        blocked_error();
+        return;
+    }
+
+    struct user* user = user_list_find_by_ip(user_list, ip);
+    if (user == NULL) {
+        blocked_error();
+        return;
+    }
+
+    cse4589_print_and_log("[BLOCKED:SUCCESS]\n");
+    struct user_blocked* cur = user->blocked_list.head->next;
+    int i = 1;
+    while (cur != user->blocked_list.tail) {
+        cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", i, cur->user->hostname, cur->user->ip, cur->user->port);
+        ++i;
+        cur = cur->next;
+    }
+    cse4589_print_and_log("[BLOCKED:END]\n");
+}
+
+static void blocked_error() {
+    cse4589_print_and_log("[BLOCKED:ERROR]\n");
+    cse4589_print_and_log("[BLOCKED:END]\n");
+}
+
+static char* get_status(bool is_logged_in) {
     if (is_logged_in)
         return logged_in;
     return logged_out;

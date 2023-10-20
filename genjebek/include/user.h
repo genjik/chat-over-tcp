@@ -19,7 +19,7 @@ void user_blocked_list_init(struct user_blocked_list*);
 void user_blocked_list_insert(struct user_blocked_list*, struct user_blocked*); 
 void user_blocked_list_remove(struct user_blocked_list*, struct user_blocked*); 
 
-struct user* user_list_find_by_ip(struct user_blocked_list* list, char* ip);
+struct user_blocked* user_blocked_list_find_by_ip(struct user_blocked_list* list, char* ip);
 
 void user_blocked_list_debug(struct user_blocked_list* list);
 void user_blocked_list_free(struct user_blocked_list* list); 
@@ -66,5 +66,6 @@ struct user* user_list_find_by_sd(struct user_list* list, int sd);
 
 void user_list_debug(struct user_list* list);
 void user_list_free(struct user_list* list); 
-/* end */
+
+/* structs for users */
 #endif

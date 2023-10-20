@@ -30,8 +30,6 @@ static void broadcast_error();
 static void block_error();
 static void unblock_error();
 
-static int validate_ip(char* cmd, char* output_ip);
-static int validate_port(char* cmd, char* output_port);
 static int get_msg_size(char* cmd);
 
 static bool is_logged_in = false;
@@ -120,10 +118,51 @@ void client_start() {
                                 memcpy(full_data->ip, host->ip, 18);
                                 full_data->port = host->port;
                                 user_list_insert(&user_list, full_data);
-                                //printf("%d) ip: %s port: %d\n", i, host->ip, host->port);
                                 buf += sizeof(struct user_stripped);
                             }
-                            //user_list_debug(&user_list);
+                        }
+                        else if (type == TYPE_SEND || type == TYPE_BROADCAST) {
+                            int num_of_msg = *(int*) (buf+4);
+                            int offset = 8;
+
+                            for (int i = 0; i < num_of_msg; ++i) {
+                                int ip_size = *(int*) (buf+offset);
+                                int msg_size = *(int*) (buf+offset+4);
+
+                                char* ip = malloc(ip_size+1);
+                                char* msg = malloc(msg_size+1);
+
+                                memcpy(ip, buf+offset+8, ip_size);
+                                ip[ip_size] = '\0';
+                                memcpy(msg, buf+offset+8+ip_size, msg_size);
+                                msg[msg_size] = '\0';
+
+                                cse4589_print_and_log("msg from:%s\n[msg]:%s\n", ip, msg);
+
+                                offset += ip_size + msg_size;
+                            }
+                        }
+                        else if (type == TYPE_BLOCK) {
+                            int success = *(char*) (buf + 4);
+                            if (success == 0) {
+                                cse4589_print_and_log("[BLOCK:SUCCESS]\n");
+                                cse4589_print_and_log("[BLOCK:END]\n");
+                            }
+                            else {
+                                cse4589_print_and_log("[BLOCK:ERROR]\n");
+                                cse4589_print_and_log("[BLOCK:END]\n");
+                            }
+                        }
+                        else if (type == TYPE_UNBLOCK) {
+                            int success = *(char*) (buf + 4);
+                            if (success == 0) {
+                                cse4589_print_and_log("[UNBLOCK:SUCCESS]\n");
+                                cse4589_print_and_log("[UNBLOCK:END]\n");
+                            }
+                            else {
+                                cse4589_print_and_log("[UNBLOCK:ERROR]\n");
+                                cse4589_print_and_log("[UNBLOCK:END]\n");
+                            }
                         }
                     }
                     free(orig_ptr);
@@ -313,13 +352,13 @@ void block_cmd(char* args, struct user_list* list, int sd) {
 
     int ip_size = 0;
     if ((ip_size = validate_ip(args, ip)) < 0) {
-        printf("here1\n");
+        //printf("here1\n");
         block_error();
         return;
     }
 
     if (user_list_find_by_ip(list, ip) == NULL) {
-        printf("here2\n");
+        //printf("here2\n");
         block_error();
         return;
     }
@@ -430,43 +469,6 @@ static void unblock_error() {
 static void login_error() {
     cse4589_print_and_log("[LOGIN:ERROR]\n");
     cse4589_print_and_log("[LOGIN:END]\n");
-}
-
-int validate_ip(char* cmd, char* output_ip) {
-    /* ip extraction */
-    int i;
-    for(i = 0; cmd[i] != ' ' && cmd[i] != '\n' && i < 16; ++i) {
-        output_ip[i] = cmd[i];
-    }
-    output_ip[i] = '\0';
-
-    /* ip validation */
-    struct sockaddr_in sockaddr;
-    if (inet_pton(AF_INET, output_ip, &(sockaddr.sin_addr)) != 1)
-        return -1;
-    
-    return i;
-}
-
-int validate_port(char* cmd, char* output_port) {
-    /* port extraction */
-    int i;
-    for(i = 0; cmd[i] != '\n' && cmd[i] != ' ' && i < 5; ++i) {
-        if (cmd[i] < 48 || cmd[i] > 57) {
-            return -1;
-        }
-        output_port[i] = cmd[i];
-    }
-    output_port[i] = '\0';
-
-    if (cmd[i] != '\n' && cmd[i] != ' ')
-        return -1;
-
-    /* port validation */
-    if (atoi(output_port) < 0 || atoi(output_port) > 65535)
-        return -1;
-
-    return i;
 }
 
 int get_msg_size(char* cmd) {

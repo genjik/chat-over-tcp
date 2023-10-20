@@ -2,6 +2,13 @@
 #include "../include/user.h"
 #include "../include/logger.h"
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include <stdlib.h>
 #include <stdbool.h>
 
@@ -68,4 +75,40 @@ void list_cmd(struct user_list* list, bool is_logged_in, bool is_client) {
        cur = cur->next;
     }
     cse4589_print_and_log("[LIST:END]\n");
+}
+
+int validate_ip(char* cmd, char* output_ip) {
+    /* ip extraction */
+    int i;
+    for(i = 0; cmd[i] != ' ' && cmd[i] != '\n' && i < 16; ++i) {
+        output_ip[i] = cmd[i];
+    }
+    output_ip[i] = '\0';
+
+    /* ip validation */
+    struct sockaddr_in sockaddr;
+    if (inet_pton(AF_INET, output_ip, &(sockaddr.sin_addr)) != 1)
+        return -1;
+    
+    return i;
+}
+int validate_port(char* cmd, char* output_port) {
+    /* port extraction */
+    int i;
+    for(i = 0; cmd[i] != '\n' && cmd[i] != ' ' && i < 5; ++i) {
+        if (cmd[i] < 48 || cmd[i] > 57) {
+            return -1;
+        }
+        output_port[i] = cmd[i];
+    }
+    output_port[i] = '\0';
+
+    if (cmd[i] != '\n' && cmd[i] != ' ')
+        return -1;
+
+    /* port validation */
+    if (atoi(output_port) < 0 || atoi(output_port) > 65535)
+        return -1;
+
+    return i;
 }

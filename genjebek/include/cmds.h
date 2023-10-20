@@ -28,4 +28,7 @@ void ip_cmd();
 void port_cmd();
 void list_cmd(struct user_list* list, bool is_logged_in, bool is_client); 
 
+int validate_ip(char* cmd, char* output_ip);
+int validate_port(char* cmd, char* output_port);
+
 #endif

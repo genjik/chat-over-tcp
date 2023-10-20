@@ -208,7 +208,7 @@ static void login_response(struct user* user) {
     *(int*) out_buf = TYPE_SEND;
     *(int*) (out_buf+4) = user->msg_buffer.size;
 
-    void* ptr = out_buf + 4;
+    void* ptr = out_buf + 8;
     struct msg* cur = user->msg_buffer.head->next;
     while (cur != user->msg_buffer.tail) {
         memcpy(ptr, cur->data, cur->size);

@@ -274,10 +274,6 @@ static void broadcast_response(void* in_buf, struct user_list* user_list, int us
     int ip_size = strlen(sender_ip);
     int msg_size = *(int*) in_buf;
 
-    /* serialize data */
-    int out_buf_size = 16 + ip_size + msg_size;
-    void* out_buf = serialize(ip_size, msg_size, sender_ip, msg); 
-
     struct user* target_user = user_list->head->next;
     while (target_user != user_list->tail) {
         /* do not send msg back to sender */
@@ -291,6 +287,10 @@ static void broadcast_response(void* in_buf, struct user_list* user_list, int us
             target_user = target_user->next;
             continue;
         }
+
+        /* serialize data */
+        int out_buf_size = 16 + ip_size + msg_size;
+        void* out_buf = serialize(ip_size, msg_size, sender_ip, msg); 
 
         /* send or buffer msg for targer user */
         send_msg_to_user(target_user, out_buf, out_buf_size, ip_size, msg_size);

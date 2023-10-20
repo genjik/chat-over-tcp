@@ -25,6 +25,25 @@ void user_blocked_list_debug(struct user_blocked_list* list);
 void user_blocked_list_free(struct user_blocked_list* list); 
 /* end */
 
+/* structs for msg */
+struct msg {
+    void* data;
+    struct msg* prev;
+    struct msg* next;
+    int size;
+};
+struct msg_buffer {
+    struct msg* head;
+    struct msg* tail;
+    int size;
+};
+void msg_buffer_init(struct msg_buffer*);
+void msg_buffer_insert(struct msg_buffer*, struct msg*); 
+void msg_buffer_remove(struct msg_buffer*, struct msg*); 
+void msg_buffer_debug(struct msg_buffer* list);
+void msg_buffer_free(struct msg_buffer* list); 
+/* end */
+
 /* structs for users */
 struct user {
     char hostname[32];
@@ -35,6 +54,7 @@ struct user {
     struct user* next;
 
     /* data hidden from clients */
+    struct msg_buffer msg_buffer;
     struct user_blocked_list blocked_list;
     int sd;
     int num_msg_sent;

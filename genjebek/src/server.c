@@ -200,18 +200,56 @@ static void refresh_response(struct user_list* user_list, int user_sd) {
 
 static void send_response(void* in_buf, struct user_list* user_list, int user_sd) {
     char* sender_ip = get_user_ip_by_socket(user_sd);
-    ++user_list_find_by_ip(user_list, sender_ip)->num_msg_sent;
 
     int ip_size = *(int*) in_buf;
-
     char* target_ip = deserialize(in_buf, 4); 
+
+    int msg_size = *(int*) (in_buf+4);
     char* msg = deserialize(in_buf + 4, ip_size);
 
     /* @TODO: send data to target_ip */
+    struct user* target_user = user_list_find_by_ip(user_list, target_ip);
+    if (target_user == NULL) {
+        cse4589_print_and_log("[RELAYED:ERROR]\n");
+        cse4589_print_and_log("[RELAYED:END]\n");
+        return;  
+    }
 
-    cse4589_print_and_log("[RECEIVED:SUCCESS]\n");
+    /* if sender is blocked by target, do NOT relay or buffer msg */
+    if (user_blocked_list_find_by_ip(&target_user->blocked_list, sender_ip) != NULL) {
+        return;
+    }
+
+    /* serialize data */
+    int out_buf_size = 16 + ip_size + msg_size;
+    void* out_buf = calloc(out_buf_size, sizeof(char));
+    *(int*) out_buf = TYPE_SEND;
+    *(int*) (out_buf+4) = 1; // num of msg to send
+    *(int*) (out_buf+8) = ip_size;
+    *(int*) (out_buf+12) = msg_size;
+    memcpy(out_buf+16, target_ip, ip_size);
+    memcpy(out_buf+16+ip_size, msg, msg_size);
+
+    /* if target user == logged_in -> send msg without buffering */
+    if (target_user->is_logged_in) {
+        int bytes_send;
+        if ((bytes_send = send(target_user->sd, out_buf, out_buf_size, 0)) == -1)
+            perror("error: server send()");
+        ++target_user->num_msg_rcv;
+        free(out_buf);
+    }
+    else {
+        struct msg* msg = (struct msg*) malloc(sizeof(struct msg)); 
+        msg->data = out_buf;
+        msg->size = out_buf_size;
+        msg_buffer_insert(&target_user->msg_buffer, msg);
+    }
+
+    ++user_list_find_by_ip(user_list, sender_ip)->num_msg_sent;
+
+    cse4589_print_and_log("[RELAYED:SUCCESS]\n");
     cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n", sender_ip, target_ip, msg);
-    cse4589_print_and_log("[RECEIVED:END]\n");
+    cse4589_print_and_log("[RELAYED:END]\n");
 
     free(sender_ip);
     free(target_ip);
@@ -222,13 +260,14 @@ static void broadcast_response(void* in_buf, struct user_list* user_list, int us
     char* sender_ip = get_user_ip_by_socket(user_sd);
     ++user_list_find_by_ip(user_list, sender_ip)->num_msg_sent;
 
+    int msg_size = *(int*) in_buf;
     char* msg = deserialize(in_buf, 0);
 
     /* @TODO: send data to target_ip */
 
-    cse4589_print_and_log("[RECEIVED:SUCCESS]\n");
+    cse4589_print_and_log("[RELAYED:SUCCESS]\n");
     cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n", sender_ip, "255.255.255.255", msg);
-    cse4589_print_and_log("[RECEIVED:END]\n");
+    cse4589_print_and_log("[RELAYED:END]\n");
 
     free(sender_ip);
     free(msg);
@@ -335,6 +374,7 @@ static struct user* create_user(struct sockaddr_in* user_addr_in, int client_sd)
     new_user->num_msg_sent = 0;
     new_user->num_msg_rcv = 0;
     user_blocked_list_init(&new_user->blocked_list);
+    msg_buffer_init(&new_user->msg_buffer);
 
     return new_user;
 }

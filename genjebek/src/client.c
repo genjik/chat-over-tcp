@@ -137,7 +137,9 @@ void client_start() {
                                 memcpy(msg, buf+offset+8+ip_size, msg_size);
                                 msg[msg_size] = '\0';
 
+                                cse4589_print_and_log("[RECEIVED:SUCCESS]\n");
                                 cse4589_print_and_log("msg from:%s\n[msg]:%s\n", ip, msg);
+                                cse4589_print_and_log("[RECEIVED:END]\n");
 
                                 offset += ip_size + msg_size;
                             }

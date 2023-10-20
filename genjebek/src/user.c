@@ -192,3 +192,53 @@ void user_blocked_list_free(struct user_blocked_list* list) {
     list->tail->prev = list->head;
     list->size = 0;
 }
+
+/* msg_buffer functions */
+void msg_buffer_init(struct msg_buffer* list) {
+    struct msg* head = (struct msg*) calloc(1, sizeof(struct msg));
+    struct msg* tail = (struct msg*) calloc(1, sizeof(struct msg));
+
+    head->next = tail;
+    tail->prev = head;
+
+    list->head = head;
+    list->tail = tail;
+    list->size = 0;
+}
+void msg_buffer_insert(struct msg_buffer* list, struct msg* msg) {
+    msg->prev = list->tail->prev;
+    msg->next = list->tail;
+
+    list->tail->prev->next = msg;
+    list->tail->prev = msg;
+
+    ++list->size;
+}
+void msg_buffer_remove(struct msg_buffer* list, struct msg* msg) {
+    msg->prev->next = msg->next;
+    msg->next->prev = msg->prev;
+    free(msg);
+    --list->size;
+}
+void msg_buffer_debug(struct msg_buffer* list) {
+    struct msg* cur = list->head->next;
+    int i = 0;
+
+    printf("\nmsg_buffer_debug()\nsize:%d\n", list->size);
+
+    while (cur != list->tail) {
+        printf("%d) data size: %d\n", i, cur->size);
+        cur = cur->next;
+    }
+}
+void msg_buffer_free(struct msg_buffer* list) {
+    struct msg* cur = list->head->next;
+    while (cur != list->tail) {
+        struct msg* next = cur->next;
+        free(cur);
+        cur = next;
+    }
+    list->head->next = list->tail;
+    list->tail->prev = list->head;
+    list->size = 0;
+}

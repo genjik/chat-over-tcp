@@ -432,13 +432,10 @@ void exit_cmd(struct user_list* list, int sd) {
     if (is_logged_in == true) {
         struct user* cur = user_list_find_current_user(list);
 
-        int size = 8 + sizeof(struct user_stripped);
-        void* buf = malloc(size);
-
+        void* buf = malloc(4);
         *(int*) buf = TYPE_EXIT;
-        memcpy(buf + 8, cur, sizeof(struct user_stripped)); 
 
-        if (send(sd, buf, size, 0) == -1) {
+        if (send(sd, buf, 4, 0) == -1) {
             cse4589_print_and_log("[EXIT:ERROR]\n");
             cse4589_print_and_log("[EXIT:END]\n");
             return;

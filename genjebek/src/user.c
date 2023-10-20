@@ -204,6 +204,7 @@ void msg_buffer_init(struct msg_buffer* list) {
     list->head = head;
     list->tail = tail;
     list->size = 0;
+    list->buf_size = 8;
 }
 void msg_buffer_insert(struct msg_buffer* list, struct msg* msg) {
     msg->prev = list->tail->prev;
@@ -219,17 +220,6 @@ void msg_buffer_remove(struct msg_buffer* list, struct msg* msg) {
     msg->next->prev = msg->prev;
     free(msg);
     --list->size;
-}
-void msg_buffer_debug(struct msg_buffer* list) {
-    struct msg* cur = list->head->next;
-    int i = 0;
-
-    printf("\nmsg_buffer_debug()\nsize:%d\n", list->size);
-
-    while (cur != list->tail) {
-        printf("%d) data size: %d\n", i, cur->size);
-        cur = cur->next;
-    }
 }
 void msg_buffer_free(struct msg_buffer* list) {
     struct msg* cur = list->head->next;

@@ -17,6 +17,7 @@
 #include "../include/logger.h"
 
 /* server responses */
+static void login_response(struct user* user);
 static void refresh_response(struct user_list* user_list, int user_sd); 
 static void send_response(void* in_buf, struct user_list* user_list, int user_sd); 
 static void broadcast_response(void* in_buf, struct user_list* user_list, int user_sd); 
@@ -138,6 +139,7 @@ void server_start(char* server_ip) {
                         if (old_user != NULL) {
                             old_user->is_logged_in = true;
                             old_user->sd = client_sd;
+                            login_response(old_user);
                         }
                         else {
                             struct user* new_user = create_user((struct sockaddr_in*) &client_addr, client_sd);
@@ -198,6 +200,31 @@ static void refresh_response(struct user_list* user_list, int user_sd) {
     free(buf);
 }
 
+static void login_response(struct user* user) {
+    if (user->msg_buffer.size <= 0)
+        return;
+
+    void* out_buf = malloc(user->msg_buffer.buf_size);
+    *(int*) out_buf = TYPE_SEND;
+    *(int*) (out_buf+4) = user->msg_buffer.size;
+
+    void* ptr = out_buf + 4;
+    struct msg* cur = user->msg_buffer.head->next;
+    while (cur != user->msg_buffer.tail) {
+        memcpy(ptr, cur->data, cur->size);
+        ptr += cur->size;
+        cur = cur->next;
+    }
+
+    int bytes_send;
+    if ((bytes_send = send(user->sd, out_buf, user->msg_buffer.size, 0)) == -1)
+        perror("error: server send()");
+    user->num_msg_rcv += user->msg_buffer.size;
+
+    free(out_buf);
+    msg_buffer_free(&user->msg_buffer);
+}
+
 static void send_response(void* in_buf, struct user_list* user_list, int user_sd) {
     char* sender_ip = get_user_ip_by_socket(user_sd);
 
@@ -207,7 +234,6 @@ static void send_response(void* in_buf, struct user_list* user_list, int user_sd
     int msg_size = *(int*) (in_buf+4);
     char* msg = deserialize(in_buf + 4, ip_size);
 
-    /* @TODO: send data to target_ip */
     struct user* target_user = user_list_find_by_ip(user_list, target_ip);
     if (target_user == NULL) {
         cse4589_print_and_log("[RELAYED:ERROR]\n");
@@ -240,8 +266,9 @@ static void send_response(void* in_buf, struct user_list* user_list, int user_sd
     }
     else {
         struct msg* msg = (struct msg*) malloc(sizeof(struct msg)); 
-        msg->data = out_buf;
-        msg->size = out_buf_size;
+        msg->data = out_buf+8;
+        msg->size = 8 + ip_size + msg_size;
+        target_user->msg_buffer.buf_size += 8 + ip_size + msg_size;
         msg_buffer_insert(&target_user->msg_buffer, msg);
     }
 

@@ -36,11 +36,11 @@ struct msg_buffer {
     struct msg* head;
     struct msg* tail;
     int size;
+    int buf_size;
 };
 void msg_buffer_init(struct msg_buffer*);
 void msg_buffer_insert(struct msg_buffer*, struct msg*); 
 void msg_buffer_remove(struct msg_buffer*, struct msg*); 
-void msg_buffer_debug(struct msg_buffer* list);
 void msg_buffer_free(struct msg_buffer* list); 
 /* end */
 

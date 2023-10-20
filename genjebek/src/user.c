@@ -222,7 +222,6 @@ void msg_buffer_remove(struct msg_buffer* list, struct msg* msg) {
     --list->size;
     list->buf_size -= msg->size;
 
-    free(msg->data-8);
     free(msg);
 }
 void msg_buffer_free(struct msg_buffer* list) {

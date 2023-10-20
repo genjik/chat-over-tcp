@@ -279,6 +279,10 @@ static void broadcast_response(void* in_buf, struct user_list* user_list, int us
 
     struct user* target_user = user_list->head->next;
     while (target_user != user_list->tail) {
+        /* do not send msg back to sender */
+        if (strcmp(target_user->ip, sender_ip) == 0)
+            continue;
+
         /* if cur user has blocked the sender -> do not send */
         if (user_blocked_list_find_by_ip(&target_user->blocked_list, sender_ip) != NULL)
             continue;

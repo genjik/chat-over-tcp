@@ -214,12 +214,16 @@ void msg_buffer_insert(struct msg_buffer* list, struct msg* msg) {
     list->tail->prev = msg;
 
     ++list->size;
+    list->buf_size += msg->size;
 }
 void msg_buffer_remove(struct msg_buffer* list, struct msg* msg) {
     msg->prev->next = msg->next;
     msg->next->prev = msg->prev;
-    free(msg);
     --list->size;
+    list->buf_size -= msg->size;
+
+    free(msg->data-8);
+    free(msg);
 }
 void msg_buffer_free(struct msg_buffer* list) {
     struct msg* cur = list->head->next;

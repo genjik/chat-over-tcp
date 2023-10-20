@@ -36,6 +36,8 @@ static struct user* create_user(struct sockaddr_in* client_addr_in, int client_s
 static char* get_status(bool is_logged_in);
 static char* get_user_ip_by_socket(int user_sd);
 static char* deserialize(void* in_buf, int metadata_offset);
+static void* serialize(int ip_size, int msg_size, char* sender_ip, char* msg);
+static void send_msg_to_user(struct user* target_user, void* out_buf, int out_buf_size, int ip_size, int msg_size);
 static void block_unblock_success(int type, int user_sd);
 static void block_unblock_failure(int type, int user_sd);
 
@@ -228,10 +230,10 @@ static void login_response(struct user* user) {
 static void send_response(void* in_buf, struct user_list* user_list, int user_sd) {
     char* sender_ip = get_user_ip_by_socket(user_sd);
 
-    int ip_size = *(int*) in_buf;
-    char* target_ip = deserialize(in_buf, 4); 
-
+    int ip_size = strlen(sender_ip);
     int msg_size = *(int*) (in_buf+4);
+
+    char* target_ip = deserialize(in_buf, 4); 
     char* msg = deserialize(in_buf + 4, ip_size);
 
     struct user* target_user = user_list_find_by_ip(user_list, target_ip);
@@ -248,29 +250,10 @@ static void send_response(void* in_buf, struct user_list* user_list, int user_sd
 
     /* serialize data */
     int out_buf_size = 16 + ip_size + msg_size;
-    void* out_buf = calloc(out_buf_size, sizeof(char));
-    *(int*) out_buf = TYPE_SEND;
-    *(int*) (out_buf+4) = 1; // num of msg to send
-    *(int*) (out_buf+8) = ip_size;
-    *(int*) (out_buf+12) = msg_size;
-    memcpy(out_buf+16, target_ip, ip_size);
-    memcpy(out_buf+16+ip_size, msg, msg_size);
+    void* out_buf = serialize(ip_size, msg_size, sender_ip, msg); 
 
-    /* if target user == logged_in -> send msg without buffering */
-    if (target_user->is_logged_in) {
-        int bytes_send;
-        if ((bytes_send = send(target_user->sd, out_buf, out_buf_size, 0)) == -1)
-            perror("error: server send()");
-        ++target_user->num_msg_rcv;
-        free(out_buf);
-    }
-    else {
-        struct msg* msg = (struct msg*) malloc(sizeof(struct msg)); 
-        msg->data = out_buf+8;
-        msg->size = 8 + ip_size + msg_size;
-        target_user->msg_buffer.buf_size += 8 + ip_size + msg_size;
-        msg_buffer_insert(&target_user->msg_buffer, msg);
-    }
+    /* send or buffer msg for targer user */
+    send_msg_to_user(target_user, out_buf, out_buf_size, ip_size, msg_size);
 
     ++user_list_find_by_ip(user_list, sender_ip)->num_msg_sent;
 
@@ -285,16 +268,32 @@ static void send_response(void* in_buf, struct user_list* user_list, int user_sd
 
 static void broadcast_response(void* in_buf, struct user_list* user_list, int user_sd) {
     char* sender_ip = get_user_ip_by_socket(user_sd);
-    ++user_list_find_by_ip(user_list, sender_ip)->num_msg_sent;
-
-    int msg_size = *(int*) in_buf;
     char* msg = deserialize(in_buf, 0);
 
-    /* @TODO: send data to target_ip */
+    int ip_size = strlen(sender_ip);
+    int msg_size = *(int*) in_buf;
+
+    /* serialize data */
+    int out_buf_size = 16 + ip_size + msg_size;
+    void* out_buf = serialize(ip_size, msg_size, sender_ip, msg); 
+
+    struct user* target_user = user_list->head->next;
+    while (target_user != user_list->tail) {
+        /* if cur user has blocked the sender -> do not send */
+        if (user_blocked_list_find_by_ip(&target_user->blocked_list, sender_ip) != NULL)
+            continue;
+
+        /* send or buffer msg for targer user */
+        send_msg_to_user(target_user, out_buf, out_buf_size, ip_size, msg_size);
+
+        target_user = target_user->next;
+    }
 
     cse4589_print_and_log("[RELAYED:SUCCESS]\n");
     cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n", sender_ip, "255.255.255.255", msg);
     cse4589_print_and_log("[RELAYED:END]\n");
+
+    ++user_list_find_by_ip(user_list, sender_ip)->num_msg_sent;
 
     free(sender_ip);
     free(msg);
@@ -479,4 +478,34 @@ static char* deserialize(void* in_buf, int metadata_offset) {
     data[data_size] = '\0';
 
     return data;
+}
+
+static void* serialize(int ip_size, int msg_size, char* sender_ip, char* msg) {
+    int out_buf_size = 16 + ip_size + msg_size;
+    void* out_buf = calloc(out_buf_size, sizeof(char));
+    *(int*) out_buf = TYPE_SEND;
+    *(int*) (out_buf+4) = 1; // num of msg to send
+    *(int*) (out_buf+8) = ip_size;
+    *(int*) (out_buf+12) = msg_size;
+    memcpy(out_buf+16, sender_ip, ip_size);
+    memcpy(out_buf+16+ip_size, msg, msg_size);
+    return out_buf;
+}
+
+static void send_msg_to_user(struct user* target_user, void* out_buf, int out_buf_size, int ip_size, int msg_size) {
+    /* if target user == logged_in -> send msg without buffering */
+    if (target_user->is_logged_in) {
+        int bytes_send;
+        if ((bytes_send = send(target_user->sd, out_buf, out_buf_size, 0)) == -1)
+            perror("error: server send()");
+        ++target_user->num_msg_rcv;
+        free(out_buf);
+    }
+    else {
+        struct msg* msg = (struct msg*) malloc(sizeof(struct msg)); 
+        msg->data = out_buf+8;
+        msg->size = 8 + ip_size + msg_size;
+        //target_user->msg_buffer.buf_size += 8 + ip_size + msg_size;
+        msg_buffer_insert(&target_user->msg_buffer, msg);
+    }
 }

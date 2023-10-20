@@ -217,7 +217,7 @@ static void login_response(struct user* user) {
     }
 
     int bytes_send;
-    if ((bytes_send = send(user->sd, out_buf, user->msg_buffer.size, 0)) == -1)
+    if ((bytes_send = send(user->sd, out_buf, user->msg_buffer.buf_size, 0)) == -1)
         perror("error: server send()");
     user->num_msg_rcv += user->msg_buffer.size;
 

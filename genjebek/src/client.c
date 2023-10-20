@@ -141,7 +141,7 @@ void client_start() {
                                 cse4589_print_and_log("msg from:%s\n[msg]:%s\n", ip, msg);
                                 cse4589_print_and_log("[RECEIVED:END]\n");
 
-                                offset += ip_size + msg_size;
+                                offset += 8 + ip_size + msg_size;
                             }
                         }
                         else if (type == TYPE_BLOCK) {

@@ -107,8 +107,13 @@ void client_start() {
                     }
                     else {
                         int type = *(int*) buf;
+                        printf("received type: %d\n", type);
 
-                        if (type == TYPE_REFRESH) {
+                        if (type == TYPE_REFRESH || type == TYPE_LOGIN) {
+                            if (type == TYPE_LOGIN) {
+                                cse4589_print_and_log("[LOGIN:SUCCESS]\n");
+                                cse4589_print_and_log("[LOGIN:END]\n");
+                            }
                             int list_size = *(int*) (buf+4);
                             buf += 8;
 
@@ -144,17 +149,6 @@ void client_start() {
                                 cse4589_print_and_log("[RECEIVED:END]\n");
 
                                 offset += 8 + ip_size + msg_size;
-                            }
-                        }
-                        else if (type == TYPE_LOGIN) {
-                            char success = *(char*) (buf + 4);
-                            if (success == 0) {
-                                cse4589_print_and_log("[LOGIN:SUCCESS]\n");
-                                cse4589_print_and_log("[LOGIN:END]\n");
-                            }
-                            else {
-                                cse4589_print_and_log("[LOGIN:ERROR]\n");
-                                cse4589_print_and_log("[LOGIN:END]\n");
                             }
                         }
                         else if (type == TYPE_BLOCK) {

@@ -17,9 +17,9 @@
 #include "../include/logger.h"
 
 /* server responses */
-static void login_response(int user_sd);
+//static void login_response(int user_sd);
 static void buffered_msg_response(struct user* user);
-static void refresh_response(struct user_list* user_list, int user_sd); 
+static void refresh_response(int type, struct user_list* user_list, int user_sd); 
 static void send_response(void* in_buf, struct user_list* user_list, int user_sd); 
 static void broadcast_response(void* in_buf, struct user_list* user_list, int user_sd); 
 static void block_response(void* in_buf, struct user_list* list, int user_sd);
@@ -151,8 +151,8 @@ void server_start(char* server_ip) {
                             user_list_insert(&user_list, new_user);
                         }
 
-                        refresh_response(&user_list, client_sd); 
-                        login_response(client_sd);
+                        refresh_response(TYPE_LOGIN, &user_list, client_sd); 
+                        //login_response(client_sd);
                     }
                 }
                 else {
@@ -171,7 +171,7 @@ void server_start(char* server_ip) {
 
                     int type = *(int*) buf;
 
-                    if (type == TYPE_REFRESH) refresh_response(&user_list, sd); 
+                    if (type == TYPE_REFRESH) refresh_response(TYPE_REFRESH, &user_list, sd); 
                     else if (type == TYPE_SEND) send_response(buf+4, &user_list, sd);
                     else if (type == TYPE_BROADCAST) broadcast_response(buf+4, &user_list, sd);
                     else if (type == TYPE_BLOCK) block_response(buf+4, &user_list, sd);
@@ -186,10 +186,11 @@ void server_start(char* server_ip) {
 }
 
 /* Server to client response functions */
-static void refresh_response(struct user_list* user_list, int user_sd) {
-    void* buf = calloc(BUFF_SIZE, sizeof(char));
+static void refresh_response(int type, struct user_list* user_list, int user_sd) {
+    int buf_size = 8 + sizeof(struct user_stripped) * user_list->size;
+    void* buf = calloc(buf_size, sizeof(char));
 
-    *(int*) buf = TYPE_REFRESH;
+    *(int*) buf = type;
     *(int*) (buf+4) = user_list->size;
 
     int i = 8;
@@ -199,23 +200,25 @@ static void refresh_response(struct user_list* user_list, int user_sd) {
     }
 
     int bytes_send;
-    if ((bytes_send = send(user_sd, buf, BUFF_SIZE, 0)) == -1)
+    if ((bytes_send = send(user_sd, buf, buf_size, 0)) == -1)
         perror("error: server send()");
 
     free(buf);
 }
 
-static void login_response(int user_sd) {
-    void* out_buf = malloc(5);
-    *(int*) out_buf = TYPE_LOGIN;
-    *(char*) (out_buf+4) = 0; // success
-
-    int bytes_send;
-    if ((bytes_send = send(user_sd, out_buf, 5, 0)) == -1)
-        perror("error: server login_response()");
-
-    free(out_buf);
-}
+//static void login_response(int user_sd) {
+//    void* out_buf = malloc(5);
+//    *(int*) out_buf = TYPE_LOGIN;
+//    *(char*) (out_buf+4) = 0; // success
+//
+//    int bytes_send;
+//    if ((bytes_send = send(user_sd, out_buf, 5, 0)) == -1)
+//        perror("error: server login_response()");
+//
+//    printf("login sent %d bytes\n", bytes_send);
+//
+//    free(out_buf);
+//}
 
 static void buffered_msg_response(struct user* user) {
     if (user->msg_buffer.size <= 0)

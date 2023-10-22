@@ -91,6 +91,14 @@ void client_start() {
                             continue;
                         }
 
+                        void* buf = malloc(4);
+                        *(int*) buf = TYPE_LOGOUT;
+                        if (send(server_sd, buf, 4, 0) == -1) {
+                            cse4589_print_and_log("[LOGOUT:ERROR]\n");
+                            cse4589_print_and_log("[LOGOUT:END]\n");
+                            return;
+                        }
+
                         close(server_sd);
                         FD_CLR(server_sd, &master_list);
                         is_logged_in = false;
@@ -107,7 +115,6 @@ void client_start() {
                     void* orig_ptr = buf;
 
                     if (recv(server_sd, buf, BUFF_SIZE, 0) <= 0) {
-                        //printf("server closed connection\n");
                         close(server_sd);
                         is_logged_in = false;
                         FD_CLR(server_sd, &master_list);

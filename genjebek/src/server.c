@@ -20,11 +20,12 @@
 //static void login_response(int user_sd);
 static void buffered_msg_response(struct user* user);
 static void refresh_response(int type, struct user_list* user_list, int user_sd); 
-static void send_response(void* in_buf, struct user_list* user_list, int user_sd); 
+static void send_response(void* in_buf, struct user_list* user_list, int user_sd);
 static void broadcast_response(void* in_buf, struct user_list* user_list, int user_sd); 
 static void block_response(void* in_buf, struct user_list* list, int user_sd);
 static void unblock_response(void* in_buf, struct user_list* list, int user_sd);
-static void exit_response(struct user_list* user_list, int user_sd);
+static void logout_response(struct user_list* user_list, int user_sd, fd_set* master_list);
+static void exit_response(struct user_list* user_list, int user_sd, fd_set* master_list);
 
 /* cmds */
 static void stats_cmd(struct user_list* user_list);
@@ -40,7 +41,7 @@ static char* get_user_ip_by_socket(int user_sd);
 static int get_user_port_by_socket(int user_sd);
 static char* deserialize(void* in_buf, int metadata_offset);
 static void* serialize(int ip_size, int msg_size, char* sender_ip, char* msg);
-static void send_msg_to_user(struct user* target_user, void* out_buf, int out_buf_size, int ip_size, int msg_size);
+static void send_msg_to_user(struct user* target_user, void* out_buf, int out_buf_size, int ip_size, int msg_size, char* sender_ip, char* target_ip, char* msg);
 static void block_unblock_success(int type, int user_sd);
 static void block_unblock_failure(int type, int user_sd);
 
@@ -161,10 +162,12 @@ void server_start(char* server_ip) {
                     int recv_bytes;
                     if ((recv_bytes = recv(sd, buf, BUFF_SIZE, 0)) < 1) {
                         if (recv_bytes == 0) {
+                            //printf("someone exited/loggedout\n");
+
                             /* Find user by its socket and mark user as "logged_out" */
-                            struct user* user = user_list_find_by_sd(&user_list, sd);
-                            if (user != NULL)
-                                user->is_logged_in = false;
+                            //struct user* user = user_list_find_by_sd(&user_list, sd);
+                            //if (user != NULL)
+                            //    user_list_remove(&user_list, user);
 
                             close(sd);
                             FD_CLR(sd, &master_list);
@@ -181,7 +184,8 @@ void server_start(char* server_ip) {
                     else if (type == TYPE_BROADCAST) broadcast_response(buf+4, &user_list, sd);
                     else if (type == TYPE_BLOCK) block_response(buf+4, &user_list, sd);
                     else if (type == TYPE_UNBLOCK) unblock_response(buf+4, &user_list, sd);
-                    else if (type == TYPE_EXIT) exit_response(&user_list, sd);
+                    else if (type == TYPE_EXIT) exit_response(&user_list, sd, &master_list);
+                    else if (type == TYPE_LOGOUT) logout_response(&user_list, sd, &master_list);
 
                     free(buf);
                 }
@@ -199,10 +203,16 @@ static void refresh_response(int type, struct user_list* user_list, int user_sd)
     *(int*) (buf+4) = user_list->size;
 
     int i = 8;
+    int actual_size = 0;
     for (struct user* cur = user_list->head->next; cur != user_list->tail; cur = cur->next) {
+        if (cur->is_logged_in == false)
+            continue;
        memcpy(buf+i, cur, sizeof(struct user_stripped)); 
        i += sizeof(struct user_stripped);
+       ++actual_size;
     }
+    *(int*) (buf+4) = actual_size;
+    buf_size = 8 + sizeof(struct user_stripped) * actual_size;
 
     int bytes_send;
     if ((bytes_send = send(user_sd, buf, buf_size, 0)) == -1)
@@ -236,6 +246,16 @@ static void buffered_msg_response(struct user* user) {
     void* ptr = out_buf + 8;
     struct msg* cur = user->msg_buffer.head->next;
     while (cur != user->msg_buffer.tail) {
+        int ip_size = *(int*) ptr;
+        int msg_size = *(int*) (ptr+4);
+        char* sender_ip = malloc(ip_size+1);
+        char* msg = malloc(msg_size+1);
+        memcpy(sender_ip, ptr+8, ip_size);
+        memcpy(msg, ptr+8+ip_size, msg_size);
+        cse4589_print_and_log("[RELAYED:SUCCESS]\n");
+        cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n", sender_ip, user->ip, msg);
+        cse4589_print_and_log("[RELAYED:END]\n");
+
         memcpy(ptr, cur->data, cur->size);
         ptr += cur->size;
         cur = cur->next;
@@ -276,13 +296,13 @@ static void send_response(void* in_buf, struct user_list* user_list, int user_sd
     void* out_buf = serialize(ip_size, msg_size, sender_ip, msg); 
 
     /* send or buffer msg for targer user */
-    send_msg_to_user(target_user, out_buf, out_buf_size, ip_size, msg_size);
+    send_msg_to_user(target_user, out_buf, out_buf_size, ip_size, msg_size, sender_ip, target_ip, msg);
 
     ++user_list_find_by_ip(user_list, sender_ip)->num_msg_sent;
 
-    cse4589_print_and_log("[RELAYED:SUCCESS]\n");
-    cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n", sender_ip, target_ip, msg);
-    cse4589_print_and_log("[RELAYED:END]\n");
+    //cse4589_print_and_log("[RELAYED:SUCCESS]\n");
+    //cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n", sender_ip, target_ip, msg);
+    //cse4589_print_and_log("[RELAYED:END]\n");
 
     free(sender_ip);
     free(target_ip);
@@ -315,14 +335,14 @@ static void broadcast_response(void* in_buf, struct user_list* user_list, int us
         void* out_buf = serialize(ip_size, msg_size, sender_ip, msg); 
 
         /* send or buffer msg for targer user */
-        send_msg_to_user(target_user, out_buf, out_buf_size, ip_size, msg_size);
+        send_msg_to_user(target_user, out_buf, out_buf_size, ip_size, msg_size, sender_ip, "255.255.255.255", msg);
 
         target_user = target_user->next;
     }
 
-    cse4589_print_and_log("[RELAYED:SUCCESS]\n");
-    cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n", sender_ip, "255.255.255.255", msg);
-    cse4589_print_and_log("[RELAYED:END]\n");
+    //cse4589_print_and_log("[RELAYED:SUCCESS]\n");
+    //cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n", sender_ip, "255.255.255.255", msg);
+    //cse4589_print_and_log("[RELAYED:END]\n");
 
     ++user_list_find_by_ip(user_list, sender_ip)->num_msg_sent;
 
@@ -389,13 +409,26 @@ static void unblock_response(void* in_buf, struct user_list* user_list, int user
     free(ip_to_unblock);
 }
 
-static void exit_response(struct user_list* user_list, int user_sd) {
+static void logout_response(struct user_list* user_list, int user_sd, fd_set* master_list) {
+    char* ip = get_user_ip_by_socket(user_sd);
+    int port = get_user_port_by_socket(user_sd);
+
+    struct user* user = user_list_find_by_ip_and_port(user_list, ip, port);
+    user->is_logged_in = false;
+    free(ip);
+    close(user_sd);
+    FD_CLR(user_sd, master_list);
+}
+
+static void exit_response(struct user_list* user_list, int user_sd, fd_set* master_list) {
     char* ip = get_user_ip_by_socket(user_sd);
     int port = get_user_port_by_socket(user_sd);
 
     struct user* user = user_list_find_by_ip_and_port(user_list, ip, port);
     user_list_remove(user_list, user);
     free(ip);
+    close(user_sd);
+    FD_CLR(user_sd, master_list);
 }
 
 static void block_unblock_success(int type, int user_sd) {
@@ -543,7 +576,14 @@ static void* serialize(int ip_size, int msg_size, char* sender_ip, char* msg) {
     return out_buf;
 }
 
-static void send_msg_to_user(struct user* target_user, void* out_buf, int out_buf_size, int ip_size, int msg_size) {
+static void send_msg_to_user(struct user* target_user, 
+                             void* out_buf, 
+                             int out_buf_size, 
+                             int ip_size, 
+                             int msg_size,
+                             char* sender_ip,
+                             char* target_ip,
+                             char* msg) {
     /* if target user == logged_in -> send msg without buffering */
     if (target_user->is_logged_in) {
         int bytes_send;
@@ -551,12 +591,14 @@ static void send_msg_to_user(struct user* target_user, void* out_buf, int out_bu
             perror("error: server send()");
         ++target_user->num_msg_rcv;
         free(out_buf);
+        cse4589_print_and_log("[RELAYED:SUCCESS]\n");
+        cse4589_print_and_log("msg from:%s, to:%s\n[msg]:%s\n", sender_ip, target_ip, msg);
+        cse4589_print_and_log("[RELAYED:END]\n");
     }
     else {
         struct msg* msg = (struct msg*) malloc(sizeof(struct msg)); 
         msg->data = out_buf+8;
         msg->size = 8 + ip_size + msg_size;
-        //target_user->msg_buffer.buf_size += 8 + ip_size + msg_size;
         msg_buffer_insert(&target_user->msg_buffer, msg);
     }
 }

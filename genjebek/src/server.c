@@ -158,15 +158,20 @@ void server_start(char* server_ip) {
                 else {
                     char* buf = (char*) calloc(BUFF_SIZE, sizeof(char));
 
-                    if (recv(sd, buf, BUFF_SIZE, 0) <= 0) {
-                        /* Find user by its socket and mark user as "logged_out" */
-                        struct user* user = user_list_find_by_sd(&user_list, sd);
-                        if (user != NULL)
-                            user->is_logged_in = false;
+                    int recv_bytes;
+                    if ((recv_bytes = recv(sd, buf, BUFF_SIZE, 0)) < 1) {
+                        if (recv_bytes == 0) {
+                            /* Find user by its socket and mark user as "logged_out" */
+                            struct user* user = user_list_find_by_sd(&user_list, sd);
+                            if (user != NULL)
+                                user->is_logged_in = false;
 
-                        close(sd);
-                        FD_CLR(sd, &master_list);
-                        continue;
+                            close(sd);
+                            FD_CLR(sd, &master_list);
+                            continue;
+                        }
+                        else
+                            perror("ERROR happened in receiving bytes");
                     }
 
                     int type = *(int*) buf;

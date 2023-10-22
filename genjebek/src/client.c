@@ -85,9 +85,16 @@ void client_start() {
                     else if (strncmp(cmd, "UNBLOCK ", 8) == 0) unblock_cmd(cmd+8, &user_list, server_sd);
                     else if (strcmp(cmd, "REFRESH\n") == 0) refresh_cmd(server_sd);
                     else if (strcmp(cmd, "LOGOUT\n") == 0) {
+                        if (is_logged_in == false) {
+                            cse4589_print_and_log("[LOGOUT:ERROR]\n");
+                            cse4589_print_and_log("[LOGOUT:END]\n");
+                            continue;
+                        }
+
                         close(server_sd);
                         FD_CLR(server_sd, &master_list);
                         is_logged_in = false;
+
                         cse4589_print_and_log("[LOGOUT:SUCCESS]\n");
                         cse4589_print_and_log("[LOGOUT:END]\n");
                     }
@@ -107,7 +114,6 @@ void client_start() {
                     }
                     else {
                         int type = *(int*) buf;
-                        printf("received type: %d\n", type);
 
                         if (type == TYPE_REFRESH || type == TYPE_LOGIN) {
                             if (type == TYPE_LOGIN) {

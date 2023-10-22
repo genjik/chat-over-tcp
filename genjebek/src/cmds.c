@@ -70,6 +70,10 @@ void list_cmd(struct user_list* list, bool is_logged_in, bool is_client) {
     struct user* cur = list->head->next;
     int i = 1;
     while (cur != list->tail) {
+        if (is_client == false && cur->is_logged_in == false) {
+            cur = cur->next;
+            continue;
+        }
        cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", i, cur->hostname, cur->ip, cur->port);
        ++i;
        cur = cur->next;

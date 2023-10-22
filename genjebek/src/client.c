@@ -21,6 +21,7 @@ static void send_cmd(char* args, struct user_list* list, int sd);
 static void broadcast_cmd(char* args, int sd);
 static void block_cmd(char* args, struct user_list* list, int sd);
 static void unblock_cmd(char* args, struct user_list* list, int sd);
+static void logout_cmd(int server_sd, fd_set* master_list);
 static void exit_cmd(struct user_list* list, int sd);
 
 static void login_error();
@@ -84,20 +85,7 @@ void client_start() {
                     else if (strncmp(cmd, "BLOCK ", 6) == 0) block_cmd(cmd+6, &user_list, server_sd);
                     else if (strncmp(cmd, "UNBLOCK ", 8) == 0) unblock_cmd(cmd+8, &user_list, server_sd);
                     else if (strcmp(cmd, "REFRESH\n") == 0) refresh_cmd(server_sd);
-                    else if (strcmp(cmd, "LOGOUT\n") == 0) {
-                        if (is_logged_in == false) {
-                            cse4589_print_and_log("[LOGOUT:ERROR]\n");
-                            cse4589_print_and_log("[LOGOUT:END]\n");
-                            continue;
-                        }
-
-                        close(server_sd);
-                        FD_CLR(server_sd, &master_list);
-                        is_logged_in = false;
-
-                        cse4589_print_and_log("[LOGOUT:SUCCESS]\n");
-                        cse4589_print_and_log("[LOGOUT:END]\n");
-                    }
+                    else if (strcmp(cmd, "LOGOUT\n") == 0) logout_cmd(server_sd, &master_list); 
                     else if (strcmp(cmd, "EXIT\n") == 0) exit_cmd(&user_list, server_sd);
 
                     free(cmd);
@@ -441,7 +429,22 @@ void unblock_cmd(char* args, struct user_list* list, int sd) {
     //cse4589_print_and_log("[UNBLOCK:END]\n");
 }
 
-void exit_cmd(struct user_list* list, int sd) {
+static void logout_cmd(int server_sd, fd_set* master_list) {
+    if (is_logged_in == false) {
+        cse4589_print_and_log("[LOGOUT:ERROR]\n");
+        cse4589_print_and_log("[LOGOUT:END]\n");
+        return;
+    }
+
+    close(server_sd);
+    FD_CLR(server_sd, master_list);
+    is_logged_in = false;
+
+    cse4589_print_and_log("[LOGOUT:SUCCESS]\n");
+    cse4589_print_and_log("[LOGOUT:END]\n");
+}
+
+static void exit_cmd(struct user_list* list, int sd) {
     if (is_logged_in == true) {
         struct user* cur = user_list_find_current_user(list);
 

@@ -17,7 +17,6 @@
 #include "../include/logger.h"
 
 /* server responses */
-//static void login_response(int user_sd);
 static void buffered_msg_response(struct user* user);
 static void refresh_response(int type, struct user_list* user_list, int user_sd); 
 static void send_response(void* in_buf, struct user_list* user_list, int user_sd); 
@@ -152,7 +151,6 @@ void server_start(char* server_ip) {
                         }
 
                         refresh_response(TYPE_LOGIN, &user_list, client_sd); 
-                        //login_response(client_sd);
                     }
                 }
                 else {
@@ -199,13 +197,18 @@ static void refresh_response(int type, struct user_list* user_list, int user_sd)
     *(int*) (buf+4) = user_list->size;
 
     int i = 8;
+    int actual_size = 0;
     for (struct user* cur = user_list->head->next; cur != user_list->tail; cur = cur->next) {
+        if (cur->is_logged_in == false)
+            continue;
        memcpy(buf+i, cur, sizeof(struct user_stripped)); 
        i += sizeof(struct user_stripped);
+       ++actual_size;
     }
+    int actual_buf_size = 8 + sizeof(struct user_stripped) * actual_size;
 
     int bytes_send;
-    if ((bytes_send = send(user_sd, buf, buf_size, 0)) == -1)
+    if ((bytes_send = send(user_sd, buf, actual_buf_size, 0)) == -1)
         perror("error: server send()");
 
     free(buf);
